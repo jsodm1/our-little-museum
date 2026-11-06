@@ -278,7 +278,7 @@ export async function createTour(ui) {
           ((offset[k] > 0 ? b : -b) - goal[k]) / offset[k],
         );
       }
-    desired.copy(goal).addScaledVector(offset, Math.max(0.065, fraction));
+    desired.copy(goal).addScaledVector(offset, Math.max(0.005, fraction));
     desired.y = clamp(desired.y, 1.18, 4.29);
   }
   function resize() {

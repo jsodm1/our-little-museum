@@ -78,6 +78,8 @@ Open the printed address. Try walking against each wall and the bench, dragging 
 
 ## Publish with GitHub Pages
 
+The live repository publishes from the root of **gh-pages**. Edit **main**: the included workflow builds your changes and updates the configured publishing source. It also supports the GitHub Actions publishing setting for new copies.
+
 This repository includes **.github/workflows/deploy.yml**. Its GitHub build uses **/our-little-museum/** as the Vite base. A local build uses relative paths.
 
 1. For a new copy, create a free public GitHub repository called **our-little-museum**.

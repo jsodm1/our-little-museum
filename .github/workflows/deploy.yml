@@ -3,19 +3,18 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+permissions: {}
 concurrency:
   group: pages
   cancel-in-progress: false
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.publish.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: read
+    outputs:
+      mode: ${{ steps.source.outputs.mode }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,10 +23,67 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - uses: actions/configure-pages@v5
+      - name: Read the configured Pages source
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/pages" > "$RUNNER_TEMP/pages.json"
+          mode=$(jq -r .build_type "$RUNNER_TEMP/pages.json")
+          if [[ "$mode" != workflow ]]; then
+            jq -e '.source.branch == "gh-pages" and .source.path == "/"' "$RUNNER_TEMP/pages.json" >/dev/null || {
+              echo "::error::Select GitHub Actions, or the root of gh-pages, in Settings → Pages."
+              exit 1
+            }
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
-      - name: Publish
+
+  publish-actions:
+    needs: build
+    if: needs.build.outputs.mode == 'workflow'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.publish.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
         id: publish
-        uses: actions/deploy-pages@v4
+
+  update-publishing-branch:
+    needs: build
+    if: needs.build.outputs.mode != 'workflow'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: published
+      - uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+          path: bundle
+      - name: Update the configured publishing branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir output
+          tar -xf bundle/artifact.tar -C output
+          rsync -a --delete --exclude=.git --exclude=CNAME output/ published/
+          touch published/.nojekyll
+          git -C published config user.name "github-actions[bot]"
+          git -C published config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C published add -A
+          if ! git -C published diff --cached --quiet; then
+            git -C published commit -m "Publish museum from ${GITHUB_SHA::8}"
+            git -C published push origin HEAD:gh-pages
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/pages/builds"
