@@ -105,7 +105,7 @@ export async function createTour(ui) {
     const aspect = host.clientWidth / Math.max(1, host.clientHeight);
     if (aspect < 1.2) {
       desired.set(-3.8, 1.85, 8.4);
-      goal.set(0.5, 1.85, 0.1);
+      goal.set(1.48, 1.97, 0.45);
     } else {
       desired.set(-4.6, 1.88, 8.9);
       goal.set(0.55, 1.99, -3.25);

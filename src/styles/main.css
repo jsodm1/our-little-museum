@@ -896,3 +896,10 @@ dialog::backdrop {
 .card img {
   object-position: 50% 37%;
 }
+@media (pointer: coarse) {
+  .tools button,
+  .collection-nav .round {
+    min-height: 42px;
+    min-width: 42px;
+  }
+}

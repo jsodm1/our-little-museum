@@ -24,6 +24,14 @@ export function constrain(point, radius = 0.24) {
       else point.z += Math.sign(dz || 1) * pz;
     }
   }
+  const dx = point.x - 4.55,
+    dz = point.z + 8.05;
+  const distance = Math.hypot(dx, dz),
+    clearance = 0.4 + radius;
+  if (distance < clearance) {
+    point.x = 4.55 + (distance ? dx / distance : 1) * clearance;
+    point.z = -8.05 + (distance ? dz / distance : 0) * clearance;
+  }
   return point;
 }
 export function bindNavigation(canvas, actions) {
