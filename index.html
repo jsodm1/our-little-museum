@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#f7f5ef" />
+    <meta
+      name="description"
+      content="Step inside a little 3D gallery of photographs and shared memories."
+    />
+    <link rel="icon" href="%BASE_URL%museum.svg" type="image/svg+xml" />
+    <title>Our Little Museum</title>
+  </head>
+  <body>
+    <header class="mast">
+      <a class="brand" href="#museum" aria-label="Our Little Museum entrance"
+        ><span class="mark" data-icon="museum"></span
+        ><span>Our Little Museum</span></a
+      >
+      <nav aria-label="Main navigation">
+        <button id="museumTab" class="navitem selected">Museum</button
+        ><button id="indexTab" class="navitem">Memory index</button>
+      </nav>
+      <div class="tools">
+        <button id="sound" aria-pressed="false">
+          <i data-icon="volumeOff"></i><span>Sound off</span></button
+        ><button id="guide" aria-label="Visitor guide">
+          <i data-icon="help"></i><span>Guide</span></button
+        ><button id="fullscreen" class="square" aria-label="Enter fullscreen">
+          <i data-icon="expand"></i>
+        </button>
+      </div>
+    </header>
+    <main>
+      <section id="museum" aria-label="Interactive museum" tabindex="-1">
+        <div id="stage" class="stage welcome">
+          <div id="world"></div>
+          <div class="scrim"></div>
+          <div class="topline">
+            <span class="room-label"
+              ><i class="live-dot"></i
+              ><span id="room">Entrance hall</span></span
+            >
+          </div>
+          <div id="welcome" class="intro">
+            <p class="eyebrow cream"><span></span>Welcome to</p>
+            <h1>Our Little<br /><em>Museum</em></h1>
+            <p class="subtitle">Every picture tells a piece of our story.</p>
+            <button id="start" class="start">
+              Start Exploring <i data-icon="arrow"></i>
+            </button>
+          </div>
+          <div id="labels"></div>
+          <div class="scene-foot">
+            <span id="coupleMark"
+              ><i data-icon="heart"></i><span id="names"></span></span
+            ><span class="scene-type"
+              ><i data-icon="orbit"></i
+              ><span id="sceneType">Interactive 3D gallery</span></span
+            >
+          </div>
+          <div class="tour-ui" hidden>
+            <div class="tour-actions">
+              <button
+                id="affection"
+                title="Hold hands"
+                aria-label="Hold hands"
+                aria-pressed="false"
+              >
+                <i data-icon="heart"></i></button
+              ><button
+                id="restart"
+                title="Restart tour"
+                aria-label="Restart tour"
+              >
+                <i data-icon="restart"></i>
+              </button>
+            </div>
+            <button id="prompt" hidden>
+              <kbd>E</kbd><span></span><i data-icon="arrow"></i>
+            </button>
+            <div id="joystick" aria-label="Movement joystick">
+              <span></span>
+            </div>
+          </div>
+          <div id="loading" role="status">
+            <i class="loading-mark" data-icon="museum"></i>
+            <p>Opening the gallery</p>
+            <progress max="100" value="0"></progress>
+          </div>
+        </div>
+      </section>
+      <section id="collection" aria-labelledby="collectionTitle">
+        <div class="collection-head">
+          <div>
+            <p class="eyebrow"><span></span>The collection</p>
+            <h2 id="collectionTitle">Our memories</h2>
+          </div>
+          <div class="collection-nav">
+            <span id="range"></span
+            ><button
+              id="backCards"
+              class="round"
+              aria-label="Previous memories"
+            >
+              <i data-icon="left"></i></button
+            ><button id="nextCards" class="round" aria-label="Next memories">
+              <i data-icon="right"></i>
+            </button>
+          </div>
+        </div>
+        <div id="cards"></div>
+      </section>
+    </main>
+    <dialog id="viewer" aria-labelledby="viewerTitle">
+      <div class="viewer-layout">
+        <div class="viewer-image"><img id="viewerImg" alt="" /></div>
+        <article class="viewer-copy">
+          <button class="round close-view" aria-label="Close memory">
+            <i data-icon="close"></i>
+          </button>
+          <p class="eyebrow" id="viewerCount"></p>
+          <h2 id="viewerTitle"></h2>
+          <p id="viewerDate"></p>
+          <p id="viewerDesc"></p>
+          <p id="personal"></p>
+          <div class="viewer-nav">
+            <button id="previous"><i data-icon="left"></i>Previous</button
+            ><button id="next">Next<i data-icon="right"></i></button>
+          </div>
+        </article>
+      </div>
+    </dialog>
+    <dialog id="help" aria-labelledby="guideTitle">
+      <div class="guide-body">
+        <button class="round close-help" aria-label="Close guide">
+          <i data-icon="close"></i>
+        </button>
+        <p class="eyebrow"><span></span>Visitor guide</p>
+        <h2 id="guideTitle">Inside the museum</h2>
+        <div class="guidelist">
+          <p>
+            <i data-icon="walk"></i
+            ><span
+              ><b>Move together</b>Use WASD or the arrow keys. On touchscreens,
+              use the joystick.</span
+            >
+          </p>
+          <p>
+            <i data-icon="orbit"></i
+            ><span
+              ><b>Look around</b>Drag to turn the camera. Scroll or pinch to
+              zoom.</span
+            >
+          </p>
+          <p>
+            <i data-icon="image"></i
+            ><span
+              ><b>Open a memory</b>Click or tap a frame, or press E nearby. Use
+              Esc to return.</span
+            >
+          </p>
+          <p>
+            <i data-icon="heart"></i
+            ><span
+              ><b>Hold hands</b>Select the heart while exploring to bring your
+              companion closer.</span
+            >
+          </p>
+        </div>
+        <button class="primary close-help">
+          Got it <i data-icon="arrow"></i>
+        </button>
+      </div>
+    </dialog>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
