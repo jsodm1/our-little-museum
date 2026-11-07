@@ -133,10 +133,112 @@ function hairCap(long) {
   return g;
 }
 
-function sculptHead(pivot, palette, soft, hairstyle) {
+function addGlasses(parent) {
+  const glasses = artist(parent);
+  const color = "#625147";
+  for (const side of [-1, 1]) {
+    glasses.add(new THREE.TorusGeometry(0.03, 0.0022, 6, 32), color,
+      [side * 0.042, 0.170, 0.120], [0, side * 0.1, 0], [1, 0.72, 1]);
+    glasses.seam([[side * 0.071, 0.174, 0.118], [side * 0.105, 0.175, 0.068],
+      [side * 0.111, 0.163, 0.003]], 0.0025, color);
+  }
+  glasses.seam([[-0.012, 0.174, 0.122], [0, 0.179, 0.132],
+    [0.012, 0.174, 0.122]], 0.0021, color);
+  glasses.finish();
+}
+
+function faceSurface(soft, eyeSize) {
+  const sections = [
+    [0.059, 0.032, 0.047, 0.035], [0.072, soft ? 0.06 : 0.071, 0.073, 0.02],
+    [0.103, 0.086, 0.092, 0.011], [0.147, 0.104, 0.105, 0.002],
+    [0.182, 0.106, 0.105, -0.001], [0.223, 0.101, 0.102, -0.001],
+    [0.262, 0.086, 0.09, -0.006], [0.288, 0.056, 0.061, -0.01],
+    [0.299, 0.015, 0.021, -0.01],
+  ];
+  const columns = 40, rows = 48;
+  const positions = [], uvs = [], indices = [];
+  let sectionIndex = 0;
+  for (let row = 0; row <= rows; row++) {
+    const v = row / rows;
+    const y = 0.059 + v * 0.24;
+    while (sectionIndex < sections.length - 2 && y > sections[sectionIndex + 1][0]) sectionIndex++;
+    const lower = sections[sectionIndex], upper = sections[sectionIndex + 1];
+    const amount = (y - lower[0]) / (upper[0] - lower[0]);
+    const rx = THREE.MathUtils.lerp(lower[1], upper[1], amount);
+    const rz = THREE.MathUtils.lerp(lower[2], upper[2], amount);
+    const cz = THREE.MathUtils.lerp(lower[3], upper[3], amount);
+    for (let col = 0; col <= columns; col++) {
+      const fraction = (col / columns * 2 - 1) * 0.97;
+      const x = fraction * rx;
+      const nose = 0.025 * Math.exp(-((x / 0.018) ** 2 + ((y - 0.140) / 0.024) ** 2));
+      const lips = 0.007 * Math.exp(-((x / 0.028) ** 2 + ((y - 0.110) / 0.012) ** 2));
+      const z = cz + rz * Math.sqrt(1 - fraction * fraction) + 0.002 + nose + lips;
+      positions.push(x, y, z);
+      const u = 0.5 + x / 0.212;
+      let textureU = u, textureV = v;
+      for (const eyeU of [0.315, 0.685]) {
+        const dx = u - eyeU, dy = v - 0.47;
+        const influence = Math.exp(-((dx / 0.10) ** 2 + (dy / 0.045) ** 2));
+        const adjustment = (1 / eyeSize - 1) * influence;
+        textureU += dx * adjustment;
+        textureV += dy * adjustment;
+      }
+      uvs.push(textureU, textureV);
+    }
+  }
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < columns; col++) {
+      const a = row * (columns + 1) + col, b = a + columns + 1;
+      indices.push(a, a + 1, b + 1, a, b + 1, b);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function addFaceTexture(parent, features, url, soft, eyeSize) {
+  const geometry = faceSurface(soft, eyeSize);
+  const material = new THREE.MeshStandardMaterial({
+    transparent: true,
+    alphaTest: 0.025,
+    roughness: 0.92,
+    metalness: 0,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+  });
+  const surface = new THREE.Mesh(geometry, material);
+  surface.name = "Portrait fitted to curved head";
+  surface.visible = false;
+  parent.add(surface);
+  const texture = new THREE.TextureLoader().load(url, (loaded) => {
+    loaded.colorSpace = THREE.SRGBColorSpace;
+    loaded.anisotropy = 2;
+    material.map = loaded;
+    material.needsUpdate = true;
+    surface.visible = true;
+    features.visible = false;
+  }, undefined, () => {
+    parent.userData.faceLoadFailed = true;
+    surface.visible = false;
+    features.visible = true;
+  });
+  // Assign before loading completes so callers can dispose an avatar immediately.
+  material.map = texture;
+}
+
+function sculptHead(pivot, palette, soft, hairstyle, config) {
   const { skin, hair } = palette;
   const long = hairstyle === "long" || hairstyle === "bob";
   const h = artist(pivot);
+  const features = new THREE.Group();
+  pivot.add(features);
+  const f = artist(features);
+  const eyeSize = THREE.MathUtils.clamp(Number(config.eyeSize) || 1, 0.8, 1.2);
   // Jaw, cheekbones and brow are separate levels on one continuous face.
   h.add(
     profile(
@@ -158,14 +260,14 @@ function sculptHead(pivot, palette, soft, hairstyle) {
   const lid = mix(skin, "#a26a52", 0.3);
   for (const s of [-1, 1]) {
     h.oval([s * 0.101, 0.15, -0.001], [0.018, 0.027, 0.015], skin);
-    h.oval([s * 0.039, 0.166, 0.098], [0.018, 0.007, 0.004], "#ede3d8", [
+    f.oval([s * 0.039, 0.166, 0.098], [0.018 * eyeSize, 0.007 * eyeSize, 0.004], "#ede3d8", [
       0,
       s * 0.25,
       0,
     ]);
-    h.oval([s * 0.039, 0.167, 0.103], [0.0075, 0.0075, 0.003], "#342a28");
-    h.oval([s * 0.037, 0.169, 0.106], [0.002, 0.002, 0.001], "#fff5de");
-    h.seam(
+    f.oval([s * 0.039, 0.167, 0.103], [0.0075 * eyeSize, 0.0075 * eyeSize, 0.003], "#342a28");
+    f.oval([s * 0.037, 0.169, 0.106], [0.002 * eyeSize, 0.002 * eyeSize, 0.001], "#fff5de");
+    f.seam(
       [
         [s * 0.022, 0.169, 0.104],
         [s * 0.04, 0.174, 0.102],
@@ -174,7 +276,7 @@ function sculptHead(pivot, palette, soft, hairstyle) {
       0.0018,
       lid,
     );
-    h.seam(
+    f.seam(
       [
         [s * 0.02, 0.189, 0.104],
         [s * 0.04, 0.194, 0.098],
@@ -186,9 +288,9 @@ function sculptHead(pivot, palette, soft, hairstyle) {
     if (soft)
       h.oval([s * 0.105, 0.126, 0.004], [0.0055, 0.006, 0.005], "#c7a36c");
   }
-  h.oval([0, 0.148, 0.106], [0.012, 0.021, 0.015], skin);
-  h.oval([0, 0.133, 0.117], [0.014, 0.009, 0.011], mix(skin, "#c0876d", 0.13));
-  h.seam(
+  f.oval([0, 0.148, 0.106], [0.012, 0.021, 0.015], skin);
+  f.oval([0, 0.133, 0.117], [0.014, 0.009, 0.011], mix(skin, "#c0876d", 0.13));
+  f.seam(
     [
       [-0.025, 0.108, 0.102],
       [-0.011, 0.104, 0.109],
@@ -264,6 +366,11 @@ function sculptHead(pivot, palette, soft, hairstyle) {
     );
   }
   h.finish();
+  f.finish();
+  if (config.glasses) addGlasses(pivot);
+  if (typeof config.faceTexture === "string" && /^(data:image\/|blob:)/.test(config.faceTexture)) {
+    addFaceTexture(pivot, features, config.faceTexture, soft, eyeSize);
+  }
 }
 
 function sculptTorso(torso, p, soft) {
@@ -525,7 +632,12 @@ export function createAvatar(config = {}) {
   const torso = joint(body, 0, 0.873);
   const head = joint(torso, 0, 0.448);
   sculptTorso(torso, p, soft);
-  sculptHead(head, p, soft, config.hairStyle || (soft ? "long" : "short"));
+  sculptHead(head, p, soft, config.hairStyle || (soft ? "long" : "short"), config);
+  head.scale.set(
+    THREE.MathUtils.clamp(Number(config.faceWidth) || 1, 0.8, 1.2),
+    THREE.MathUtils.clamp(Number(config.faceHeight) || 1, 0.85, 1.15),
+    1,
+  );
   const hips = artist(body);
   hips.add(
     profile([

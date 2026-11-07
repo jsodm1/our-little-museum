@@ -1,311 +1,95 @@
-import "./styles/main.css";
-import {
-  memories,
-  museumConfig,
-  photoURL,
-  fallbackURL,
-} from "./config/museumConfig.js";
-import { icon, installIcons } from "./components/icons.js";
-import { makeSound } from "./components/sound.js";
-
-const $ = (q) => document.querySelector(q),
-  stage = $("#stage"),
-  viewer = $("#viewer"),
-  help = $("#help");
-const small = matchMedia("(max-width:760px)"),
-  reduced = matchMedia("(prefers-reduced-motion:reduce)");
-const audio = makeSound(),
-  pad = (n) => String(n).padStart(2, "0");
-let tour = null,
-  walking = false,
-  indexMode = false,
-  current = 0,
-  first = 0,
-  openTimer = 0,
-  origin = null,
-  failed = false;
-installIcons();
-$("#names").textContent = museumConfig.couple.map((p) => p.name).join(" & ");
-function setImage(img, m) {
-  img.onerror = () => {
-    img.onerror = null;
-    img.src = fallbackURL;
-  };
-  img.src = photoURL(m);
-  img.alt = m.title;
+import './styles/main.css';
+import {icon,installIcons} from './components/icons.js';
+import {makeSound} from './components/sound.js';
+import {avatarPreview} from './components/avatarPreview.js';
+import {prepareFace} from './characters/face.js';
+import {createTour} from './scenes/tour.js';
+import {placeCatalog} from './scenes/places.js';
+import {applyWorld,memories,photoURL} from './config/museumConfig.js';
+import {defaultWorld,saveWorld,listWorlds,readWorld,preference,exportWorld,importWorld,imageData,blobData,download,validateWorld} from './data/worlds.js';
+import * as online from './data/online.js';
+import {connectTogether} from './data/live.js';
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const field=(label,key,value,type='text',extra='')=>`<label class="field">${label}<input type="${type}" name="${key}" value="${esc(value)}" ${extra}></label>`;
+const select=(label,key,value,options)=>`<label class="field">${label}<select name="${key}">${options.map(([v,t])=>`<option value="${v}" ${value===v?'selected':''}>${esc(t)}</option>`).join('')}</select></label>`;
+const button=(id,label,ico,cls='subtle')=>`<button id="${id}" class="${cls}">${ico?icon(ico):''}${label}</button>`;
+let world,engine,session,row=null,live=null,preview=null,started=false,activePanel='',draft=null,editorTab='story',avatarIndex=0,memoryIndex=0,viewIndex=0,toastTimer,onlineUsers=[],pendingTravel=null,pendingView=null;
+const sound=makeSound(), panel=$('#panel'),body=$('#panelBody'),viewer=$('#viewer');
+let traveling=false;
+let pendingInvite=new URLSearchParams(location.hash.slice(1)).get('invite');
+if(pendingInvite){sessionStorage.setItem('couple-invite',pendingInvite);history.replaceState(null,'',location.pathname+location.search);}
+pendingInvite||=sessionStorage.getItem('couple-invite');
+const role=()=>row&&session?.user.id===row.partner_id?1:0;
+const canEdit=()=>!row||session?.user.id===row.owner_id||row.partner_can_edit;
+function toast(message){clearTimeout(toastTimer);$('#toast').textContent=message;$('#toast').hidden=false;const feedback=$('#panelFeedback');if(feedback){feedback.textContent=message;feedback.hidden=!panel.open;}toastTimer=setTimeout(()=>{$('#toast').hidden=true;if($('#panelFeedback'))$('#panelFeedback').hidden=true;},6500);}
+function wire(id,fn){const el=$('#'+id);if(el)el.onclick=e=>run(()=>fn(e),el);}
+async function run(fn,el){if(el)el.disabled=true;try{return await fn();}catch(e){console.error(e);toast(e.message||'Something went wrong. Please try again.');}finally{if(el?.isConnected)el.disabled=false;}}
+function updateNames(){const names=world.couple.map(c=>c.name);$('#coupleNames').textContent=names.join(' & ');$('.monogram').textContent=names.map(n=>n[0]||'♡').join(' & ');document.title=world.title+' · '+names.join(' & ');}
+function closePanel(){preview?.dispose();preview=null;panel.close();activePanel='';draft=null;$$('#dock button').forEach(b=>b.classList.remove('active'));engine?.pause();}
+function panelStart(title,name){if($('#panelFeedback'))$('#panelFeedback').hidden=true;preview?.dispose();preview=null;engine?.pause();activePanel=name;$('#panelTitle').textContent=title;body.innerHTML='';if(!panel.open)panel.showModal();$$('#dock button').forEach(b=>b.classList.toggle('active',b.dataset.panel===name));}
+function attachImages(){body.querySelectorAll('img').forEach(im=>im.onerror=()=>{im.onerror=null;im.src=import.meta.env.BASE_URL+'photos/missing.svg';});}
+async function persist(){validateWorld(world);applyWorld(world);updateNames();if(!row){await saveWorld(world);await preference('lastWorld',world.id);}engine?.refreshAvatars();}
+async function switchWorld(w,r=null){live?.close();live=null;row=r;world=w;applyWorld(world);updateNames();await sound.configure(world);engine.refreshAvatars();await engine.travel(world.startPlace||'beach');enter(false);if(!row){await saveWorld(world);await preference('lastWorld',world.id);}else connect();}
+function enter(full=false){started=true;$('#welcome').hidden=true;$('#stage').classList.add('walking');$('#walkControls').hidden=false;engine.start();if(full&&document.fullscreenEnabled&&!document.fullscreenElement)document.documentElement.requestFullscreen().catch(()=>{});}
+function updatePlace(id){const p=placeCatalog.find(p=>p.id===id);$('#placeName').textContent=p.name;$('#placeKicker').textContent=p.name.toUpperCase();$('#zoneName').textContent=p.subtitle;$('#timeName').textContent=(world.time==='night'||id==='rooftop')?'Under the stars':'Golden hour';}
+async function travel(id){if(traveling)return;traveling=true;closePanel();toast('Opening '+placeCatalog.find(p=>p.id===id).name+'…');try{await engine.travel(id);enter();toast(placeCatalog.find(p=>p.id===id).subtitle);}finally{traveling=false;}}
+async function openPanel(name){
+ if(name==='places')return placesPanel();if(name==='memories')return memoriesPanel();if(name==='editor')return editorPanel();if(name==='music')return musicPanel();if(name==='together')return togetherPanel();if(name==='worlds')return worldsPanel();return guidePanel();
 }
-function dateLabel(date) {
-  const d = new Date(date + "T12:00:00");
-  return isNaN(d.getTime())
-    ? date
-    : new Intl.DateTimeFormat("en", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }).format(d);
+function placesPanel(){panelStart('Somewhere for us','places');body.innerHTML=`<p class="panel-lede">Nine places. No hurry. Choose where we go next.</p><div class="place-grid">${placeCatalog.map(p=>`<button class="place-card ${engine.place===p.id?'selected':''}" data-place="${p.id}"><div class="place-art" style="--sky:${p.color};--ground:${p.id==='beach'?'#719694':p.color}"><i>${icon(p.icon)}</i></div><div class="place-copy"><h3>${esc(p.name)}</h3><p>${esc(p.description)}</p></div></button>`).join('')}</div><h3>Little corners of ${esc(placeCatalog.find(p=>p.id===engine.place).name)}</h3><div class="zones">${placeCatalog.find(p=>p.id===engine.place).zones.map((z,i)=>`<button class="subtle" data-zone="${i}">${esc(z.name)}</button>`).join('')}</div><div class="buttonbar"><span class="muted">Your partner explores independently.</span>${button('travelInvite','Invite partner here','people')}</div>`;
+ $$('[data-place]').forEach(b=>b.onclick=()=>run(()=>travel(b.dataset.place),b));$$('[data-zone]').forEach(b=>b.onclick=()=>{const z=placeCatalog.find(p=>p.id===engine.place).zones[Number(b.dataset.zone)];closePanel();enter();engine.zone(z.position);$('#zoneName').textContent=z.name;toast(z.description);});wire('travelInvite',()=>{if(!live)throw Error('Open Together and connect a private world first.');live.send('travel',{place:engine.place});toast('Invitation sent. Your partner can join from Together.');});}
+function memoriesPanel(){panelStart('The moments we keep','memories');body.innerHTML=`<p class="panel-lede">Every picture tells a piece of our story.</p><div class="memory-grid">${memories.map((m,i)=>`<button class="memory-card" data-memory="${i}"><img src="${esc(photoURL(m))}" alt="${esc(m.title)}"><h3>${esc(m.title)}</h3><small>${esc(m.date)}</small></button>`).join('')}</div>`;attachImages();$$('[data-memory]').forEach(b=>b.onclick=()=>openMemory(Number(b.dataset.memory)));}
+function openMemory(i){closePanel();viewIndex=(i+memories.length)%memories.length;const m=memories[viewIndex];$('#memoryImage').src=photoURL(m);$('#memoryImage').alt=m.title;$('#memoryCount').textContent=`MEMORY ${String(viewIndex+1).padStart(2,'0')} / ${String(memories.length).padStart(2,'0')}`;$('#memoryTitle').textContent=m.title;$('#memoryDate').textContent=m.date||'A moment worth keeping';$('#memoryText').textContent=m.description;$('#letter').textContent=m.id===world.finaleId?world.personalMessage:'';$('#letter').hidden=m.id!==world.finaleId;$('#viewTogether').hidden=!live;if(!viewer.open)viewer.showModal();engine.focus(viewIndex);sound.chime();}
+function openLetter(){const i=memories.findIndex(m=>m.id===world.finaleId);openMemory(i<0?memories.length-1:i);$('#letter').hidden=false;$('#letter').textContent=world.personalMessage;engine.reaction();}
+function editorPanel(){draft=structuredClone(world);editorTab=canEdit()?'story':'characters';avatarIndex=role();renderEditor();}
+function renderEditor(){panelStart('Make it yours','editor');const tabs=canEdit()?['story','characters','photos','places','letter']:['characters'];body.innerHTML=`<div class="tabs">${tabs.map(t=>`<button data-edit-tab="${t}" class="${t===editorTab?'active':''}">${({story:'Our story',characters:'Characters',photos:'Photographs',places:'World settings',letter:'Love letter'})[t]}</button>`).join('')}</div><div id="editorContent"></div><div class="buttonbar"><span class="muted">${row?(canEdit()?'Save publishes to your private world.':'You can edit your own character.'):'Saved on this browser. Export a backup, or publish from Together.'}</span>${button('saveEdit',row?'Save to our world':'Save changes','check','primary')}</div>`;
+ $$('[data-edit-tab]').forEach(b=>b.onclick=()=>{collectEditor();editorTab=b.dataset.editTab;renderEditor();});
+ const content=$('#editorContent');
+ if(editorTab==='story')content.innerHTML=`<div class="form-grid">${field('World title','title',draft.title,'text','maxlength="70" required')}${field('Our anniversary','anniversary',draft.anniversary,'date')}<div class="span-two note">You can keep several separate worlds on this device. Published worlds are private to their owner and one invited partner.</div></div><h3>Things we want to do together</h3><div id="wishes">${(draft.bucketList||[]).map((b,i)=>`<label class="check"><input type="checkbox" data-wish="${i}" ${b.done?'checked':''}><span>${esc(b.text)}</span></label>`).join('')}</div><div class="row"><input id="newWish" maxlength="150" placeholder="A little adventure…" style="flex:1">${button('addWish','Add','plus')}</div>`;
+ if(editorTab==='characters')renderCharacter(content);
+ if(editorTab==='photos')renderPhotos(content);
+ if(editorTab==='places')content.innerHTML=`<div class="form-grid">${select('Start in','startPlace',draft.startPlace,placeCatalog.map(p=>[p.id,p.name]))}${select('Atmosphere','time',draft.time,[['sunset','Golden hour'],['night','Under the stars']])}${select('Favorite photograph','favoriteId',draft.favoriteId,draft.memories.map(m=>[m.id,m.title]))}${select('Final surprise photograph','finaleId',draft.finaleId,draft.memories.map(m=>[m.id,m.title]))}</div><p class="note">Every place has its own corners to explore. Use Places to jump to a garden path, lookout, café table, or quiet room.</p>`;
+ if(editorTab==='letter')content.innerHTML=`<p class="panel-lede">For all the things a photograph cannot say.</p><label class="field">Your personal letter<textarea name="personalMessage" maxlength="6000" style="min-height:230px">${esc(draft.personalMessage)}</textarea></label><p class="note">Your letter appears at the final photograph and the letter stations in every place. Members of your private world can read it.</p>`;
+ wire('addWish',()=>{collectEditor();const t=$('#newWish').value.trim();if(t){if(draft.bucketList.length>=30)throw Error('Keep up to 30 wishes.');draft.bucketList.push({text:t,done:false});renderEditor();}});
+ wire('saveEdit',async()=>{collectEditor();validateWorld(draft);const oldPlace=engine.place;if(row){let next;if(canEdit())next=await online.publish(draft,session.user.id);else next=await online.saveAvatar(draft,role(),session.user.id);row=next;world=await online.hydrate(row);}else world=draft;await persist();await sound.configure(world);closePanel();await engine.travel(oldPlace);enter();toast(row?'Your private world is saved.':'Saved on this device.');});
 }
-function renderCards() {
-  const size = indexMode ? memories.length : small.matches ? 2 : 4;
-  first = indexMode ? 0 : Math.min(first, Math.max(0, memories.length - size));
-  const visible = memories.slice(first, first + size);
-  const cards = $("#cards");
-  cards.replaceChildren();
-  visible.forEach((memory, k) => {
-    const btn = document.createElement("button"),
-      fig = document.createElement("figure"),
-      img = document.createElement("img"),
-      num = document.createElement("span"),
-      title = document.createElement("strong"),
-      date = document.createElement("small");
-    btn.className = "card";
-    btn.type = "button";
-    btn.setAttribute("aria-label", "Open " + memory.title);
-    img.loading = "lazy";
-    setImage(img, memory);
-    // Thumbnails crop to a common contact-sheet format. In the viewer and 3D frame the entire image is visible.
-    num.className = "num";
-    num.textContent = pad(first + k + 1);
-    fig.append(img, num);
-    title.textContent = memory.title;
-    date.textContent = dateLabel(memory.date);
-    btn.append(fig, date, title);
-    const index = first + k;
-    btn.onclick = () => openMemory(index);
-    cards.append(btn);
-  });
-  $("#range").textContent =
-    pad(first + 1) +
-    "–" +
-    pad(first + visible.length) +
-    " / " +
-    pad(memories.length);
-  $("#backCards").disabled = !first;
-  $("#nextCards").disabled = first + size >= memories.length;
+function collectEditor(){if(!draft)return;const content=$('#editorContent');if(!content)return;
+ for(const el of content.querySelectorAll('[name]')){if(el.name.startsWith('char.')){const key=el.name.slice(5);draft.couple[avatarIndex][key]=el.type==='checkbox'?el.checked:el.type==='range'?Number(el.value):el.value;}else if(el.name.startsWith('photo.')){const m=draft.memories[memoryIndex],key=el.name.slice(6);if(['x','y','z'].includes(key))m.position[['x','y','z'].indexOf(key)]=Number(el.value);else m[key]=el.type==='number'?Number(el.value):el.value;}else draft[el.name]=el.value;}
+ content.querySelectorAll('[data-wish]').forEach(c=>draft.bucketList[Number(c.dataset.wish)].done=c.checked);
 }
-function selectTab(isIndex) {
-  indexMode = isIndex;
-  tour?.pause();
-  document.body.classList.toggle("index-mode", isIndex);
-  $("#indexTab").classList.toggle("selected", isIndex);
-  $("#museumTab").classList.toggle("selected", !isIndex);
-  $("#indexTab").setAttribute("aria-current", isIndex ? "page" : "false");
-  $("#museumTab").setAttribute("aria-current", isIndex ? "false" : "page");
-  first = 0;
-  renderCards();
-  window.scrollTo({ top: 0, behavior: "instant" });
+function renderCharacter(content){const c=draft.couple[avatarIndex];content.innerHTML=`<div class="row" style="margin-bottom:18px">${draft.couple.map((a,i)=>`<button class="subtle ${avatarIndex===i?'active':''}" data-avatar="${i}" ${!canEdit()&&i!==role()?'disabled':''}>${esc(a.name)}</button>`).join('')}</div><div class="avatar-layout"><div class="avatar-preview" id="avatarPreview"><p>Drag to turn · live preview</p></div><div><div class="form-grid">${field('Name','char.name',c.name,'text','maxlength="40" required')}${select('Body style','char.style',c.style,[['masculine','Masculine'],['feminine','Feminine']])}${select('Hairstyle','char.hairStyle',c.hairStyle,[['short','Short'],['bob','Bob'],['long','Long']])}${field('Hair color','char.hair',c.hair,'color')}${field('Top','char.top',c.top,'color')}${field('Trousers','char.pants',c.pants,'color')}${field('Skin tone','char.skin',c.skin,'color')}${field('Shoes','char.shoes',c.shoes,'color')}</div><label class="upload">${icon('upload')} Upload a clear face photo<input id="faceUpload" type="file" accept="image/jpeg,image/png,image/webp"></label><p class="muted">Use a front-facing photo with permission. Face alignment runs on your device. This is an approximate stylized likeness, adjustable below.</p><div class="form-grid">${field('Face width','char.faceWidth',c.faceWidth||1,'range','min=".8" max="1.2" step=".01"')}${field('Face height','char.faceHeight',c.faceHeight||1,'range','min=".85" max="1.15" step=".01"')}${field('Eye size','char.eyeSize',c.eyeSize||1,'range','min=".8" max="1.2" step=".01"')}<label class="check"><input name="char.glasses" type="checkbox" ${c.glasses?'checked':''}>Glasses</label></div>${button('removeFace','Use illustrated face','close')}</div></div>`;
+ preview=avatarPreview($('#avatarPreview'),c);$$('[data-avatar]').forEach(b=>b.onclick=()=>{collectEditor();avatarIndex=Number(b.dataset.avatar);renderEditor();});content.querySelectorAll('[name^="char."]').forEach(el=>el.oninput=()=>{collectEditor();preview.update(draft.couple[avatarIndex]);});
+ $('#faceUpload').onchange=e=>run(async()=>{const f=e.target.files[0];if(!f)return;collectEditor();toast('Aligning the face on this device…');const result=await prepareFace(f);Object.assign(draft.couple[avatarIndex],result);delete draft.couple[avatarIndex].faceAsset;renderEditor();toast(result.source==='landmarks'?'Face aligned. Adjust the likeness before saving.':'Face detection was unavailable. A centered crop is ready for manual adjustment.');});
+ wire('removeFace',()=>{collectEditor();delete draft.couple[avatarIndex].faceTexture;delete draft.couple[avatarIndex].faceAsset;renderEditor();});}
+function renderPhotos(content){memoryIndex=Math.min(memoryIndex,draft.memories.length-1);const m=draft.memories[memoryIndex];content.innerHTML=`<div class="form-grid"><div><label class="field">Choose a memory<select id="editMemory">${draft.memories.map((x,i)=>`<option value="${i}" ${i===memoryIndex?'selected':''}>${i+1}. ${esc(x.title)}</option>`).join('')}</select></label><img class="upload-preview" src="${esc(photoURL(m))}" alt="Memory preview"><label class="upload">${icon('upload')} Replace photograph<input id="photoUpload" type="file" accept="image/jpeg,image/png,image/webp,image/avif"></label><div class="row">${button('addPhoto','Add memory','plus')}${button('removePhoto','Remove','close')}</div><p class="note">Portrait and landscape photos keep their original proportions. New frames use free wall positions; you can adjust their placement.</p></div><div>${field('Memory title','photo.title',m.title,'text','maxlength="100" required')}${field('Date','photo.date',m.date,'date')}<label class="field">Description<textarea name="photo.description" maxlength="2000">${esc(m.description)}</textarea></label><div class="form-grid three">${field('Wall X','photo.x',m.position[0],'number','step=".01" min="-6" max="6"')}${field('Height Y','photo.y',m.position[1],'number','step=".01" min=".5" max="4"')}${field('Wall Z','photo.z',m.position[2],'number','step=".01" min="-10" max="10"')}${field('Rotation °','photo.rotation',m.rotation,'number','step="1" min="-360" max="360"')}${field('Order','photo.order',m.order,'number','min="1" max="30"')}</div></div></div>`;
+ attachImages();$('#editMemory').onchange=e=>{collectEditor();memoryIndex=Number(e.target.value);renderEditor();};$('#photoUpload').onchange=e=>run(async()=>{const f=e.target.files[0];if(!f)return;collectEditor();m.image=await imageData(f);delete m.assetPath;renderEditor();});
+ wire('addPhoto',()=>{collectEditor();if(draft.memories.length>=30)throw Error('A world supports up to 30 photos.');let slot;const candidates=[];for(const x of [-5.96,5.96])for(const z of [-7.8,-4.8,-1.8,1.2,4.2,7.2])candidates.push({position:[x,2.03,z],rotation:x<0?90:-90});slot=candidates.find(s=>draft.memories.every(m=>Math.hypot(m.position[0]-s.position[0],m.position[2]-s.position[2])>2.2))||{position:[0,3.6,-9.96],rotation:0};draft.memories.push({id:crypto.randomUUID(),title:'A new memory',description:'A little moment I want to keep.',date:'',order:draft.memories.length+1,file:'missing.svg',...slot});memoryIndex=draft.memories.length-1;renderEditor();});
+ wire('removePhoto',()=>{if(draft.memories.length===1)throw Error('Keep at least one photograph.');draft.memories.splice(memoryIndex,1);if(!draft.memories.some(m=>m.id===draft.favoriteId))draft.favoriteId=draft.memories[0].id;if(!draft.memories.some(m=>m.id===draft.finaleId))draft.finaleId=draft.memories.at(-1).id;memoryIndex=0;renderEditor();});}
+function musicPanel(){panelStart('The sound of us','music');body.innerHTML=`<p class="panel-lede">A quiet soundtrack for a little time together.</p>${[['piano','Slow mornings','An original, gentle piano-like melody'],['garden','Garden afternoon','Warm notes, a soft repeating harmony'],['stars','Under the stars','A slower, spacious night-time motif'],...(world.soundtrack?[['custom',world.soundtrack.name,'Your own soundtrack · looped']]:[])].map(([id,title,sub])=>`<div class="sound-pick ${world.music===id?'active':''}"><div><strong>${esc(title)}</strong><small>${esc(sub)}</small></div><button class="subtle" data-track="${id}">${world.music===id?'Selected':'Choose'}</button></div>`).join('')}<div class="row between">${button('soundToggle',sound.enabled?'Turn sound off':'Turn sound on',sound.enabled?'sound':'mute','primary')}<label class="field" style="width:45%;margin:0">Volume<input id="volume" type="range" min="0" max="1" step=".01" value="${world.volume}"></label></div>${canEdit()?`<label class="upload" style="margin-top:24px">${icon('upload')} Add your soundtrack<input id="audioUpload" type="file" accept="audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/webm"></label><p class="muted">MP3 recommended, up to 12 MB. Use audio you own or have permission to share. Save shared soundtrack changes through Customize.</p>`:''}`;
+ wire('soundToggle',async()=>{await sound.toggle();musicPanel();});$$('[data-track]').forEach(b=>b.onclick=()=>run(async()=>{world.music=b.dataset.track;await sound.configure(world);if(!sound.enabled)await sound.toggle();if(!row)await saveWorld(world);musicPanel();}));$('#volume').oninput=e=>{world.volume=Number(e.target.value);sound.setVolume(world.volume);};$('#volume').onchange=()=>{if(!row)run(()=>saveWorld(world));};if($('#audioUpload'))$('#audioUpload').onchange=e=>run(async()=>{const f=e.target.files[0];if(!f)return;if(f.size>12*1024*1024)throw Error('Choose a soundtrack smaller than 12 MB.');if(!f.type.startsWith('audio/'))throw Error('Choose an audio file.');world.soundtrack={name:f.name,data:await blobData(f)};world.music='custom';await sound.configure(world);if(!row)await saveWorld(world);musicPanel();toast('Soundtrack added. Turn sound on to listen.');});}
+async function worldsPanel(){panelStart('Your little worlds','worlds');const saved=await listWorlds();body.innerHTML=`<p class="panel-lede">A separate space for each story.</p><div class="row" style="margin-bottom:20px">${button('newWorld','Create a new world','plus','primary')}${button('exportWorld','Download backup','download')}${button('importWorld','Restore backup','upload')}</div><h3>On this device</h3><div class="world-list">${saved.map(w=>`<div class="world-row"><div><strong>${esc(w.title)}</strong><small>${w.couple.map(c=>esc(c.name)).join(' & ')} · ${w.memories.length} memories</small></div><button class="subtle" data-local="${esc(w.id)}">Open</button></div>`).join('')||'<p class="empty">Your first world will appear here.</p>'}</div><p class="note">Local changes and uploads stay on this browser. A backup is a private ZIP file. Publishing from Together uploads media to your private shared world; it does not commit personal photos to GitHub.</p>${button('openOnline','Open shared worlds','people')}`;
+ wire('newWorld',async()=>{closePanel();await switchWorld(defaultWorld());editorPanel();});wire('exportWorld',()=>exportWorld(world));wire('importWorld',()=>$('#backupInput').click());wire('openOnline',togetherPanel);$$('[data-local]').forEach(b=>b.onclick=()=>run(async()=>{const w=await readWorld(b.dataset.local);closePanel();await switchWorld(w);}));}
+function connect(){live?.close();onlineUsers=[];if(!row||!session)return;live=connectTogether(row.id,session.user.id,{status:s=>{const el=$('#connectionStatus');if(el)el.textContent=s==='SUBSCRIBED'?'Connected · private world':'Reconnecting… your local world remains available';},presence:users=>{onlineUsers=users;$('#onlineDot').classList.toggle('on',users.length>0);const el=$('#partnerStatus');if(el)el.textContent=users.length?'Your partner is here':'Your partner is away · companion follows you';if(!users.length)engine.remote(null);},event:(kind,p)=>{if(kind==='pose')engine.remote(p);if(kind==='reaction'){engine.reaction();toast('A little heart from your love.');}if(kind==='chat'){if(activePanel==='together')run(refreshChat);else toast('A new message is waiting in Together.');}if(kind==='travel'&&placeCatalog.some(x=>x.id===p.place)){pendingTravel=p.place;toast('Your partner invited you somewhere. Open Together to join.');}if(kind==='view'&&memories.some(m=>m.id===p.memory)){pendingView=p.memory;toast('Your partner wants to share a memory. Open Together to view.');}}});}
+async function togetherPanel(){panelStart('A world for two','together');session=await online.currentSession();if(!online.cloud){body.innerHTML='<p class="note">Add your Supabase URL and publishable key in src/config/online.js to enable online worlds.</p>';return;}
+ if(!session){body.innerHTML=`<div class="account-layout"><div><p class="panel-lede">Meet here, even when you are miles apart.</p><p class="muted">Create an account with a username and password. Each private world has one owner and one invited partner. Both can explore on their own screen, send hearts, and chat.</p><p class="note">No email is collected. Save your recovery code after signing up: it is the only way to reset a forgotten password.</p>${pendingInvite?'<p class="note">Your invitation is saved. Sign in or create an account to accept it.</p>':''}</div><form id="authForm" class="card-surface"><h3>Come on in</h3>${field('Username','username','','text','minlength="4" maxlength="24" pattern="[a-z0-9_]{4,24}" autocomplete="username" required')}${field('Password','password','','password','minlength="10" maxlength="128" autocomplete="current-password" required')}<div class="row"><button class="primary" type="submit">Sign in</button>${button('register','Create account','plus')}</div><details style="margin-top:18px"><summary class="muted">Forgot your password?</summary><label class="field">Recovery code<input id="recovery" autocomplete="off"></label>${button('recoverAccount','Reset password')}</details></form></div>`;$('#authForm').onsubmit=e=>{e.preventDefault();run(async()=>{const f=new FormData(e.target);await online.signIn(online.usernameEmail(f.get('username')),f.get('password'));session=await online.currentSession();await togetherPanel();});};
+ wire('register',async e=>{e.preventDefault();const form=$('#authForm');if(!form.reportValidity())return;const f=new FormData(form),username=f.get('username'),password=f.get('password');const created=await online.account('register',username,password);await online.signIn(online.usernameEmail(username),password);session=await online.currentSession();panelStart('Keep your recovery code','together');body.innerHTML=`<p class="panel-lede">Your account is ready.</p><p class="note">Save this code somewhere private. Anyone with it can reset your password. It is shown once.</p><label class="field">Recovery code<textarea readonly>${esc(created.recoveryCode)}</textarea></label>${button('downloadRecovery','Download recovery code','download','primary')} ${button('continueAccount','I saved it · continue','arrow')}`;wire('downloadRecovery',()=>download('Our Little World\nUsername: '+username+'\nRecovery code: '+created.recoveryCode+'\nKeep this private.','our-world-recovery.txt','text/plain'));wire('continueAccount',togetherPanel);});
+ wire('recoverAccount',async e=>{e.preventDefault();const f=new FormData($('#authForm'));const r=await online.account('recover',null,f.get('password'),$('#recovery').value.trim());download('New recovery code: '+r.recoveryCode,'our-world-recovery.txt','text/plain');toast('Password reset. Your replacement recovery code was downloaded. Sign in with your username.');});return;}
+ const worlds=await online.cloudWorlds();body.innerHTML=`<div class="row between" style="margin-bottom:20px"><span class="status-line">${icon('people')}${esc(session.user.email.split('@')[0])}</span>${button('signOut','Sign out')}</div>${pendingInvite?`<div class="note">Someone saved you a place in their world. ${button('acceptInvite','Accept invitation','heart','primary')}</div>`:''}<div class="account-layout"><div class="card-surface"><h3>${row?'Our private world':'Make this world private'}</h3>${row?`<p id="connectionStatus" class="status-line">Connected · private world</p><p id="partnerStatus" class="muted">${onlineUsers.length?'Your partner is here':'Your partner is away · companion follows you'}</p><p class="muted">You are the ${role()===0?'owner':'partner'}. ${canEdit()?'Shared editing is enabled for your account.':'The owner manages shared changes. You can customize your character.'}</p><div class="row">${button('reloadCloud','Reload saved version','refresh')}${role()===0&&!row.partner_id?button('invitePartner','Create partner link','heart','primary'):''}</div>${role()===0&&row.partner_id?`<label class="check"><input id="allowPartnerEdit" type="checkbox" ${row.partner_can_edit?'checked':''}>Allow partner to edit photos, story and settings</label>`:''}<div id="inviteOutput"></div>${pendingTravel?button('joinTravel','Join partner at '+esc(placeCatalog.find(p=>p.id===pendingTravel).name),'map'):''}${pendingView?button('joinView','View partner’s memory','image'):''}`:`<p class="muted">Upload this world's photos, avatars and soundtrack to a private space. Invite one partner. Each account can own up to three worlds.</p>${button('publishWorld','Create private world','people','primary')}`}<p class="note">Free-plan limits apply. Keep a downloaded backup of important memories.</p><h3>Your shared worlds</h3><div class="world-list">${worlds.map(w=>`<div class="world-row"><div><strong>${esc(w.state.title)}</strong><small>${w.owner_id===session.user.id?'Owner':'Partner'}</small></div><button class="subtle" data-cloud="${w.id}">Open</button></div>`).join('')||'<p class="muted">No shared worlds yet.</p>'}</div></div><div class="card-surface"><h3>Just between us</h3>${row?'<div id="chatLog" class="chat-log" role="log" aria-label="Private conversation"></div><form id="chatForm" class="chat-form"><input id="chatText" maxlength="1000" placeholder="A little message…" aria-label="Message" required><button class="primary" type="submit" aria-label="Send message">'+icon('send')+'</button></form>':'<p class="empty">Open or create a private world to chat with your partner.</p>'}<p class="muted">Messages are stored privately for the two accounts. Chat is not end-to-end encrypted.</p></div></div>`;
+ wire('signOut',async()=>{live?.close();live=null;engine.remote(null);$('#onlineDot').classList.remove('on');await online.signOut();session=null;row=null;await switchWorld(defaultWorld());togetherPanel();});
+ wire('publishWorld',async()=>{const r=await online.publish(world,session.user.id);await switchWorld(await online.hydrate(r),r);togetherPanel();});wire('acceptInvite',async()=>{const r=await online.acceptInvite(pendingInvite);pendingInvite=null;sessionStorage.removeItem('couple-invite');await switchWorld(await online.hydrate(r),r);togetherPanel();});wire('reloadCloud',async()=>{const r=await online.getCloudWorld(row.id);await switchWorld(await online.hydrate(r),r);togetherPanel();});
+ wire('invitePartner',async()=>{const url=await online.invite(row.id);$('#inviteOutput').innerHTML=`<label class="field" style="margin-top:15px">Private invitation · valid for two days<input readonly value="${esc(url)}"></label>${button('copyInvite','Copy invitation','people')}<p class="muted">Send this link privately. The first different account to accept becomes your partner.</p>`;wire('copyInvite',async()=>{try{await navigator.clipboard.writeText(url);toast('Invitation copied.');}catch{toast('Select and copy the invitation above.');}});});
+ if($('#allowPartnerEdit'))$('#allowPartnerEdit').onchange=e=>run(async()=>{await online.setEditing(row.id,e.target.checked);row.partner_can_edit=e.target.checked;toast('Partner permissions updated.');});
+ $$('[data-cloud]').forEach(b=>b.onclick=()=>run(async()=>{const r=await online.getCloudWorld(b.dataset.cloud);await switchWorld(await online.hydrate(r),r);togetherPanel();},b));
+ wire('joinTravel',async()=>{const id=pendingTravel;pendingTravel=null;await travel(id);});wire('joinView',()=>{const i=memories.findIndex(m=>m.id===pendingView);pendingView=null;openMemory(i);});
+ if(row){if(!live)connect();await refreshChat();$('#chatForm').onsubmit=e=>{e.preventDefault();run(async()=>{const value=$('#chatText').value.trim();if(!value)return;await online.postMessage(row.id,session.user.id,value);$('#chatText').value='';await refreshChat();live?.send('chat',{});},e.target.querySelector('button'));};}
 }
-function setWalking(value) {
-  walking = value;
-  stage.classList.toggle("welcome", !value);
-  stage.classList.toggle("exploring", value);
-  $("#welcome").hidden = value;
-  $(".tour-ui").hidden = !value;
-  $("#room").textContent = value ? "Main gallery" : "Entrance hall";
-  if (value) {
-    tour?.start();
-    $("#museum").focus({ preventScroll: true });
-  } else tour?.reset();
+async function refreshChat(){if(!row||!$('#chatLog'))return;const messages=await online.messages(row.id);if(!$('#chatLog'))return;$('#chatLog').innerHTML=messages.map(m=>`<div class="chat-message ${m.author_id===session.user.id?'own':''}"><small>${esc(world.couple[m.author_id===row.owner_id?0:1].name)} · ${esc(new Date(m.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</small>${esc(m.body)}</div>`).join('')||'<p class="empty">Your own quiet corner of the internet.</p>';$('#chatLog').scrollTop=$('#chatLog').scrollHeight;}
+function guidePanel(){panelStart('A little help','guide');body.innerHTML=`<div class="guide-grid">${[['map','Find your way','WASD or arrow keys to walk. On a phone, use the joystick. Tap a clear spot on the ground to walk there.'],['crosshair','Look around','Drag to turn the camera. Scroll or pinch to zoom. Recenter brings the camera back behind you.'],['image','Keep a memory','Tap a photograph, or walk close and press E. Escape closes a panel or photograph.'],['heart','A little affection','Press the heart to walk close and send a floating heart. Your partner receives it when connected.'],['people','Explore together','Each person signs into their own account. The owner creates a private world and sends one invitation. Movement updates about once a second.'],['expand','Fill your screen','Use fullscreen where your browser supports it. On iPhone: Safari → Share → Add to Home Screen → open the saved app.']].map(([i,h,t])=>`<div class="guide-item"><i>${icon(i)}</i><div><b>${h}</b>${t}</div></div>`).join('')}</div><div class="buttonbar">${button('restart','Restart tour','refresh')}${button('backupGuide','Download world backup','download')}</div><p class="note">Sample photographs show a fictional generated couple. Replace them with yours. Local editing needs no account. Private sharing requires internet. Browser fullscreen can always be exited.</p>`;wire('restart',()=>{closePanel();engine.reset();started=false;$('#welcome').hidden=false;$('#stage').classList.remove('walking');$('#walkControls').hidden=true;});wire('backupGuide',()=>exportWorld(world));}
+async function boot(){installIcons();try{const lastId=await preference('lastWorld');world=(lastId?await readWorld(lastId):null)||defaultWorld();}catch{world=defaultWorld();toast('Browser storage is unavailable. Export changes before closing.');}applyWorld(world);updateNames();session=await online.currentSession();engine=await createTour({world:()=>world,role,active:()=>!panel.open&&!viewer.open,progress:p=>$('#loading progress').value=p,compatible:()=>{},lost:()=>toast('The graphics context was interrupted. Reload to continue.'),hands:on=>$('#affection').setAttribute('aria-pressed',String(on)),near:(i,title)=>{$('#prompt').hidden=i<0;$('#prompt span').textContent=title||'Open memory';},open:openMemory,hotspot:h=>{if(h.kind==='letter')openLetter();else if(h.kind==='memory')openMemory(Math.abs(h.id.split('').reduce((s,c)=>s+c.charCodeAt(0),0))%memories.length);else{editorPanel();if(!canEdit())toast('Your owner keeps the shared wish list.');}},notify:toast,place:updatePlace,pose:p=>live?.send('pose',p)});updatePlace(engine.place);await sound.configure(world);$('#loading').hidden=true;
+ wire('enter',()=>enter(true));wire('makeYours',editorPanel);wire('home',guidePanel);wire('worldButton',worldsPanel);wire('closePanel',closePanel);panel.addEventListener('cancel',e=>{e.preventDefault();closePanel();});viewer.addEventListener('close',()=>engine.unfocus());wire('closeViewer',()=>viewer.close());wire('previous',()=>openMemory(viewIndex-1));wire('next',()=>openMemory(viewIndex+1));wire('viewTogether',()=>{live?.send('view',{memory:memories[viewIndex].id});toast('Memory invitation sent.');});$('#memoryImage').onerror=()=>{$('#memoryImage').onerror=null;$('#memoryImage').src=import.meta.env.BASE_URL+'photos/missing.svg';};$$('[data-panel]').forEach(b=>b.onclick=()=>run(()=>openPanel(b.dataset.panel),b));wire('affection',()=>{engine.affection();live?.send('reaction',{});sound.chime();});wire('recenter',()=>engine.recenter());wire('prompt',()=>engine.interact());wire('snap',()=>{const a=document.createElement('a');a.href=engine.snapshot();a.download='our-little-world.png';a.click();toast('A little moment, captured.');});wire('fullscreen',async()=>{if(document.fullscreenElement)await document.exitFullscreen();else if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();else toast('Use Add to Home Screen for the fullest view on this device.');});if(!document.fullscreenEnabled)$('#fullscreen').hidden=true;
+ $('#backupInput').onchange=e=>run(async()=>{const f=e.target.files[0];if(f){const w=await importWorld(f);closePanel();await switchWorld(w);toast('Backup restored as a separate local world.');}e.target.value='';});window.addEventListener('keydown',e=>{if(viewer.open&&e.key==='ArrowRight'){e.preventDefault();openMemory(viewIndex+1);}if(viewer.open&&e.key==='ArrowLeft'){e.preventDefault();openMemory(viewIndex-1);}});if(pendingInvite)await togetherPanel();
+ // Refresh signed media without overwriting unsaved edits.
+ setInterval(()=>{if(row&&!panel.open&&!viewer.open)run(async()=>{const latest=await online.getCloudWorld(row.id);if(latest.revision===row.revision){world=await online.hydrate(latest);applyWorld(world);}});},45*60*1000);
 }
-function showMemory() {
-  const m = memories[current];
-  setImage($("#viewerImg"), m);
-  $("#viewerTitle").textContent = m.title;
-  $("#viewerDate").textContent = dateLabel(m.date);
-  $("#viewerDesc").textContent = m.description;
-  $("#viewerCount").textContent =
-    "Memory " + pad(current + 1) + " / " + pad(memories.length);
-  const finale = m.id === museumConfig.finaleId;
-  $("#personal").hidden = !finale;
-  $("#personal").textContent = finale ? museumConfig.personalMessage : "";
-  viewer.classList.toggle("finale", finale);
-  $("#previous").disabled = memories.length < 2;
-  $("#next").disabled = memories.length < 2;
-}
-function openMemory(index) {
-  clearTimeout(openTimer);
-  const wasOpen = viewer.open;
-  if (!wasOpen) origin = document.activeElement;
-  current = (index + memories.length) % memories.length;
-  audio.chime();
-  if (!indexMode && tour) tour.focus(current);
-  showMemory();
-  if (!wasOpen) {
-    openTimer = setTimeout(
-      () => {
-        openTimer = 0;
-        if (!viewer.open) viewer.showModal();
-      },
-      tour && !indexMode && !reduced.matches ? 360 : 0,
-    );
-  }
-}
-function near(i) {
-  const b = $("#prompt");
-  b.hidden = i < 0;
-  if (i >= 0) b.querySelector("span").textContent = memories[i].title;
-  if (walking)
-    $("#room").textContent =
-      i < 0
-        ? "Main gallery"
-        : memories[i].id === museumConfig.finaleId
-          ? "Final surprise"
-          : memories[i].id === museumConfig.favoriteId
-            ? "Memory wall"
-            : "Main gallery";
-}
-function dismissLoading() {
-  const el = $("#loading");
-  el.style.opacity = "0";
-  setTimeout(() => (el.hidden = true), 430);
-}
-function fallback() {
-  if (failed) return;
-  failed = true;
-  tour = null;
-  setWalking(false);
-  stage.classList.add("fallback");
-  $("#labels").hidden = true;
-  $("#world").style.display = "none";
-  stage.style.backgroundImage = 'url("' + photoURL(memories[0]) + '")';
-  $("#room").textContent = "Photo gallery · 3D unavailable";
-  $("#start").innerHTML = "Browse memories " + icon("arrow");
-  $("#sceneType").textContent = "Photo collection";
-  dismissLoading();
-}
-$("#start").onclick = () => {
-  audio.chime();
-  if (failed) selectTab(true);
-  else setWalking(true);
-};
-$("#restart").onclick = () => {
-  audio.chime();
-  setWalking(false);
-};
-$("#affection").onclick = () => {
-  audio.chime();
-  tour?.affection();
-};
-$("#prompt").onclick = () => tour?.interact();
-$("#indexTab").onclick = () => selectTab(true);
-$("#museumTab").onclick = () => selectTab(false);
-$(".brand").onclick = (e) => {
-  e.preventDefault();
-  selectTab(false);
-  if (tour) setWalking(false);
-};
-$("#backCards").onclick = () => {
-  first = Math.max(0, first - (small.matches ? 2 : 4));
-  renderCards();
-};
-$("#nextCards").onclick = () => {
-  first += small.matches ? 2 : 4;
-  renderCards();
-};
-small.addEventListener("change", renderCards);
-$("#previous").onclick = () => openMemory(current - 1);
-$("#next").onclick = () => openMemory(current + 1);
-$(".close-view").onclick = () => viewer.close();
-viewer.addEventListener("close", () => {
-  clearTimeout(openTimer);
-  tour?.unfocus();
-  if (origin?.isConnected) origin.focus({ preventScroll: true });
-});
-$("#guide").onclick = () => {
-  tour?.pause();
-  help.showModal();
-};
-document
-  .querySelectorAll(".close-help")
-  .forEach((b) => (b.onclick = () => help.close()));
-for (const dialog of [viewer, help])
-  dialog.addEventListener("click", (e) => {
-    if (e.target !== dialog) return;
-    const b = dialog.getBoundingClientRect();
-    if (
-      e.clientX < b.left ||
-      e.clientX > b.right ||
-      e.clientY < b.top ||
-      e.clientY > b.bottom
-    )
-      dialog.close();
-  });
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && openTimer) {
-    clearTimeout(openTimer);
-    openTimer = 0;
-    tour?.unfocus();
-  }
-  if (!viewer.open) return;
-  if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-    e.preventDefault();
-    openMemory(current + (e.key === "ArrowRight" ? 1 : -1));
-  }
-});
-$("#sound").onclick = async () => {
-  const b = $("#sound");
-  b.disabled = true;
-  try {
-    const on = await audio.toggle();
-    b.setAttribute("aria-pressed", String(on));
-    b.setAttribute("aria-label", on ? "Turn sound off" : "Turn sound on");
-    b.innerHTML =
-      "<i>" +
-      icon(on ? "volume" : "volumeOff") +
-      "</i><span>Sound " +
-      (on ? "on" : "off") +
-      "</span>";
-  } catch {
-    b.title = "Audio unavailable in this browser";
-  } finally {
-    b.disabled = false;
-  }
-};
-const full = $("#fullscreen");
-if (!document.fullscreenEnabled || !document.documentElement.requestFullscreen)
-  full.hidden = true;
-full.onclick = async () => {
-  try {
-    if (document.fullscreenElement) await document.exitFullscreen();
-    else await document.documentElement.requestFullscreen();
-  } catch {
-    full.hidden = true;
-  }
-};
-document.addEventListener("fullscreenchange", () =>
-  full.setAttribute(
-    "aria-label",
-    document.fullscreenElement ? "Exit fullscreen" : "Enter fullscreen",
-  ),
-);
-selectTab(false);
-async function init() {
-  const started = performance.now();
-  $("#loading progress").value = 5;
-  try {
-    const { createTour } = await import("./scenes/tour.js");
-    tour = await createTour({
-      progress: (n) => ($("#loading progress").value = n),
-      near,
-      open: openMemory,
-      lost: fallback,
-      active: () => !indexMode && !viewer.open && !help.open && !openTimer,
-      compatible: () => {
-        $("#sceneType").textContent = "3D compatibility mode";
-      },
-      hands: (on) => {
-        const btn = $("#affection");
-        btn.setAttribute("aria-pressed", String(on));
-        btn.title = on ? "Release hands" : "Hold hands";
-        btn.setAttribute("aria-label", btn.title);
-      },
-    });
-    setTimeout(
-      dismissLoading,
-      Math.max(0, 500 - (performance.now() - started)),
-    );
-  } catch (err) {
-    console.warn("3D gallery could not start:", err);
-    fallback();
-  }
-}
-init();
+boot().catch(e=>{console.error(e);$('#loadMessage').textContent='Unable to open the world: '+e.message;const b=document.createElement('button');b.className='primary';b.textContent='Try again';b.onclick=()=>location.reload();$('#loading').append(b);});

@@ -11,26 +11,18 @@ const keysForWalk = [
   "ArrowUp",
   "ArrowDown",
 ];
-export function constrain(point, radius = 0.24) {
-  point.x = MathUtils.clamp(point.x, -room.x + radius, room.x - radius);
-  point.z = MathUtils.clamp(point.z, -room.z + radius, room.z - radius);
-  for (const b of benches) {
-    const dx = point.x - b.x,
-      dz = point.z - b.z;
-    const px = b.w / 2 + radius - Math.abs(dx),
-      pz = b.d / 2 + radius - Math.abs(dz);
-    if (px > 0 && pz > 0) {
-      if (px < pz) point.x += Math.sign(dx || 1) * px;
-      else point.z += Math.sign(dz || 1) * pz;
+export function constrain(point, radius = .28, bounds = room, obstacles = benches) {
+  for (let pass = 0; pass < 3; pass++) {
+    point.x = MathUtils.clamp(point.x, -bounds.x + radius, bounds.x - radius);
+    point.z = MathUtils.clamp(point.z, -bounds.z + radius, bounds.z - radius);
+    for (const b of obstacles) {
+      const dx=point.x-b.x, dz=point.z-b.z;
+      const px=b.w/2+radius-Math.abs(dx), pz=b.d/2+radius-Math.abs(dz);
+      if(px>0 && pz>0) {
+        if(px<pz) point.x+=Math.sign(dx||1)*px;
+        else point.z+=Math.sign(dz||1)*pz;
+      }
     }
-  }
-  const dx = point.x - 4.55,
-    dz = point.z + 8.05;
-  const distance = Math.hypot(dx, dz),
-    clearance = 0.4 + radius;
-  if (distance < clearance) {
-    point.x = 4.55 + (distance ? dx / distance : 1) * clearance;
-    point.z = -8.05 + (distance ? dz / distance : 0) * clearance;
   }
   return point;
 }

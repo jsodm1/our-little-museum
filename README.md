@@ -1,14 +1,73 @@
-# Our Little Museum
+# Our Little World
 
-A walkable Three.js photograph museum for two. A companion follows the visitor through a warm gallery with eight framed memories, a favorite-photo wall and a final letter. All images, character geometry and sound are local to the app.
+A romantic, full-screen Three.js world for two. Expanded from **Our Little Museum**.
 
-[Open the museum on GitHub Pages](https://jsodm1.github.io/our-little-museum/)
+**Open:** https://jsodm1.github.io/our-little-museum/  
+**Source:** https://github.com/jsodm1/our-little-museum
 
-## Run on your computer
+## Start here — no coding required
 
-1. Install Node.js 22.12 or newer and Git.
-2. On GitHub, choose **Code → Download ZIP** and extract it, or run the commands below.
-3. Open a terminal in the folder containing **package.json**.
+1. Open the website and choose **Make it yours** or **Customize**.
+2. In **Characters**, change both names, clothing, hairstyle and colors. Upload a front-facing photograph to make a stylized likeness. Drag the preview to turn it. Adjust face width, height and eye size. Save your changes.
+3. In **Photographs**, select a memory, replace its image and edit its title, date and description. Add more memories if needed.
+4. Write a personal message in **Love letter**. It appears at the final photograph and letter stations.
+5. Choose a starting place and atmosphere in **World settings**.
+6. Open **Sound** to choose one of three original synthesized soundtracks or upload your own MP3. Audio starts only after a button press.
+7. Click the names at the top → **Download backup**. Keep the ZIP file safe. It includes your custom photos, faces, story and uploaded music.
+
+Local edits stay in this browser's IndexedDB. They do not automatically reach GitHub or another device. Clearing browser data can erase them. Backups can be restored as a new local world.
+
+## Share privately with one person
+
+The published site is already connected to the owner's **free Supabase project**. No paid account or payment details are required to use the app.
+
+1. Open **Together → Create account**. Choose a unique lowercase username (4–24 characters: letters, numbers, underscores) and a password of at least 10 characters.
+2. **Download and keep the recovery code.** No email is collected. This code is the only password-reset method. Keep it private, like a password.
+3. Choose **Create private world** to upload the current world and custom media.
+4. Choose **Create partner link**, copy it, and send it privately to your partner.
+5. Your partner opens that link, creates their own account or signs in, then chooses **Accept invitation**.
+6. Open the same shared world from Together on both devices. Each person moves their own character. Send hearts, chat, or invite each other to a location or photograph.
+
+An invitation expires after two days and works once. The first different signed-in account to accept becomes the partner. Each world has at most two member accounts; each owner can create three shared worlds. A different couple can create their own separate world.
+
+The owner controls shared editing. A partner can always edit their own avatar. The owner can enable **Allow partner to edit photos, story and settings**. The database enforces these rules, not just the buttons. Stale edits are rejected rather than overwriting newer saves: reload the saved version and reapply your changes.
+
+Use **Reload saved version** after the other person publishes changes. Travel and photo invitations appear in Together; they do not force the other person's camera to move. Motion uses a private database heartbeat roughly once per second with interpolated rendering. Slow connections update less often. When your partner is away, their character becomes an animated companion.
+
+Photos and uploaded audio live in a private bucket, with temporary signed URLs. The public repository contains only the fictional sample photos. Chat is private to members but is **not end-to-end encrypted**. The account/project administrator can access stored records. A love letter is readable by both members once saved; there is no secret scheduled-release promise.
+
+## Places
+
+| Place | Corners to explore |
+|---|---|
+| Memory Museum | Photo collection, favorite memory wall, final letter |
+| Garden Park | Rose walk, bridge, picnic lawn, lantern grove |
+| Sunset Beach | Shoreline, boardwalk, lighthouse, bonfire cove, seaside picnic |
+| Our Little Café | Window table, coffee counter, record corner, garden terrace |
+| Starlight Rooftop | City overlook, stargazing, pergola, midnight letter |
+| Forest Retreat | Woodland trail, cabin, waterfall, campfire |
+| Our Cozy Home | Living room, kitchen, quiet room, green balcony |
+| Winter Village | Village square, frozen pond, cabin porch, wishing tree |
+| Celebration Garden | Flower arch, dinner table, dance-floor area, surprise pavilion |
+
+All environments are actual Three.js geometry. Places are separate scenes; use the Places panel to travel. They are not one continuous open world. Each scene has bounds and furniture/terrain collisions. Location illustrations in the chooser are decorative icons; the world itself is rendered in 3D.
+
+## Controls and phones
+
+- **WASD / arrow keys:** move; **drag:** orbit camera; **wheel / pinch:** zoom.
+- **Tap the ground:** walk toward that point. If an obstacle blocks the straight path, steer around it.
+- **E / tap frame / interaction prompt:** open a memory or station.
+- **Escape:** close a photo or panel. Arrow keys change photos while the viewer is open.
+- **Phone joystick:** move. Drag elsewhere to look around.
+- **Heart:** affectionate pose and floating hearts. **Crosshair:** recenter. **Camera:** download a picture of the 3D scene.
+- **Fullscreen:** supported browsers request fullscreen on Enter or with the toolbar button. Browsers always allow exiting.
+- **iPhone:** Safari → Share → Add to Home Screen → open the saved icon for an app-like full-screen view. Safari may keep browser bars when opened as a regular tab; websites cannot forcibly hide them.
+
+Portrait and landscape layouts are included. The manifest and home-screen icons are local. The application does not currently install an offline service worker. Run the local project for use without a hosted frontend; online sharing always requires internet.
+
+## Download and run the source
+
+Install **Node.js 22.12 or newer**, then:
 
 ```sh
 git clone https://github.com/jsodm1/our-little-museum.git
@@ -17,110 +76,107 @@ npm install
 npm run dev
 ```
 
-If you downloaded the ZIP, skip the first two commands and open the extracted project folder. Open the **Local** address printed by Vite. Keep the terminal open. To test a phone, connect it to the same Wi-Fi as the computer and open Vite's **Network** address in Safari or Chrome. Allow the development server on your private network if your firewall asks. Press Ctrl+C to stop.
+Open the localhost address printed by Vite. To test a phone on the same Wi-Fi, open the printed Network address and permit the local development port through your computer's firewall if needed.
 
-## Make it yours
-
-**Photographs.** Replace the eight JPEG files inside **public/photos/**, keeping the names **photo01.jpg** through **photo08.jpg**. Portrait and landscape images fit inside both their museum mats and the large viewer without stretching or cropping. The small collection thumbnails use a cropped preview. JPEG or WebP at about 1,200–2,000 pixels on the longest side is a practical starting point. Convert iPhone HEIC images to JPEG first.
-
-**Names and appearance.** Open **src/config/museumConfig.js**. Under **couple**, change each **name**. The names appear over the characters, at the entrance and on the memory wall. Edit **hair**, **skin**, **top**, **pants** and **shoes** using hex colors. Choose **short**, **long** or **bob** for **hairStyle**. The first character is the visitor, and the second follows.
-
-**Titles, captions and dates.** Edit the corresponding object under **memories**. Dates use YYYY-MM-DD. Change **order** to rearrange the index and the viewer's Next/Previous sequence. Change **favoriteId** and **finaleId** to select the special frames. Edit **personalMessage** for the letter shown inside the final memory. Keep the two IDs different. Each memory needs a unique **id**.
-
-**Add a photograph.** Save your next image as **public/photos/photo09.jpg**. Add another object inside **memories**, separated by a comma. The following position fits beside the final frame:
-
-```js
-{
-  id: 'a-rainy-afternoon',
-  order: 9,
-  file: 'photo09.jpg',
-  title: 'A Rainy Afternoon',
-  date: '2026-10-18',
-  description: 'We missed the bus and spent an hour watching the rain together.',
-  position: [-3.7, 2.03, 9.96],
-  rotation: 180
-}
-```
-
-| Wall | Fixed coordinate | Rotation | Change this to space frames |
-| --- | --- | --- | --- |
-| Far wall | z = -9.96 | 0 | x |
-| Entrance wall | z = 9.96 | 180 | x |
-| Left wall | x = -5.96 | 90 | z |
-| Right wall | x = 5.96 | -90 | z |
-
-Coordinates are **[x, y, z]** in metres. Positive y is up. Leave roughly 2.8 metres between ordinary landscape frame centers and extra space around a special frame. Missing files show an illustrated placeholder.
-
-Personal edits appear on the public site after you commit the assets and configuration and the Pages workflow succeeds. Anyone who can access the public repository can also download its photographs.
-
-## Visit and test
-
-| Action | Computer | Phone or tablet |
-| --- | --- | --- |
-| Enter | Start Exploring | Start Exploring |
-| Walk | WASD or arrow keys | Left joystick |
-| Look and zoom | Drag, then scroll to zoom | Drag, then pinch to zoom |
-| Open a photo | Click a frame or press E when its title appears | Tap the frame or nearby title |
-| Browse or close | Previous / Next, left / right arrows, Esc | Previous / Next / Close |
-| Stand together | Heart button | Heart button |
-| Return to the entrance | Circular arrow | Circular arrow |
-
-Use **Memory index** to go directly to any photograph. **Guide** explains the controls during a visit. **Sound** enables an original synthesized ambient chord and gentle notes after a tap. Fullscreen appears when the browser supports it.
-
-For a production check:
+The first dev/build command copies the installed MediaPipe WASM runtime and downloads the pinned face-landmarker model, verifying its SHA-256. This needs internet **once**. Afterward the face assets are served from `public/mediapipe/` and `public/models/`. Face processing itself runs on the device and does not call a paid AI API. The large generated vendor asset folders are ignored by Git and prepared automatically in deployment.
 
 ```sh
+npm test
 npm run build
 npm run preview
 ```
 
-Open the printed address. Try walking against each wall and the bench, dragging the camera, clicking a frame, browsing all eight images and closing the viewer. Open **Forever With You** to check the final letter. Test both orientations on a phone. To check the missing-image fallback, temporarily rename one JPEG and reload, then restore it. The production files are in **dist/** and need an HTTP server.
+`dist/` is the complete deployable frontend, including the face model, runtime, sample photos and icons. A WebGL2 browser uses the GPU renderer. Lower-powered/touch devices use reduced rendering resolution and lighter shadows. If WebGL is unavailable, the software renderer draws the same scene geometry at reduced quality. Face detection can fall back to a centered crop; the editor labels that result. A selfie creates an **approximate stylized face overlay and proportions**, not a photorealistic full 3D reconstruction or identity verification.
 
-## Publish with GitHub Pages
+## Personalize source defaults
 
-The live repository publishes from the root of **gh-pages**. Edit **main**: the included workflow builds your changes and updates the configured publishing source. It also supports the GitHub Actions publishing setting for new copies.
+Put your published photos in:
 
-This repository includes **.github/workflows/deploy.yml**. Its GitHub build uses **/our-little-museum/** as the Vite base. A local build uses relative paths.
+```text
+public/photos/photo01.jpg
+public/photos/photo02.jpg
+public/photos/photo03.jpg
+public/photos/photo04.jpg
+public/photos/photo05.jpg
+public/photos/photo06.jpg
+public/photos/photo07.jpg
+public/photos/photo08.jpg
+```
 
-1. For a new copy, create a free public GitHub repository called **our-little-museum**.
-2. In **Settings → Pages → Build and deployment → Source**, select **GitHub Actions**.
-3. For a cloned project, publish edits by running:
+Edit `src/config/museumConfig.js` for names, appearance, titles, descriptions, dates, favorite/finale IDs and frame placement. Example:
 
-   ```sh
-   git add .
-   git commit -m "Personalize the museum"
-   git push origin main
-   ```
+```js
+{
+  id: 'first-date',
+  order: 3,
+  file: 'photo03.jpg',
+  title: 'Our First Date',
+  date: '2026-11-07',
+  description: 'One little table, two cups, and a conversation I wanted to keep.',
+  position: [5.96, 2.03, -6.4],
+  rotation: -90
+}
+```
 
-   For an extracted project you want to publish to a **new empty repository**, open a terminal in its folder and run:
+Positions are `[x, height, z]` in metres. A rotation of 0 faces +Z, −90 faces −X, 90 faces +X and 180 faces −Z. Use unique IDs. Frame textures retain portrait/landscape aspect ratios; missing images use the local fallback graphic. The editor supports up to 30 memories, but 8–12 frames give the original gallery more breathing room. Adding many frames requires spacing/position adjustments.
 
-   ```sh
-   git init -b main
-   git add .
-   git commit -m "Create our little museum"
-   git remote add origin https://github.com/YOUR-USERNAME/our-little-museum.git
-   git push -u origin main
-   ```
+Default place, soundtrack and world settings are in `src/data/worlds.js`. Existing local worlds keep their saved values; create a new local world to see changed source defaults.
 
-   Replace YOUR-USERNAME with your GitHub username. If the target already has a README or other commits, clone it first, copy the project files into the clone and use the first set of commands. Include the hidden **.github** folder.
-4. Open **Actions → Publish museum to GitHub Pages**. Every push to main runs a clean install, builds the site and deploys **dist/**. Use **Run workflow** after changing Pages settings if necessary.
-5. Once the run is green, open **Settings → Pages → Visit site**. Share that address. For this repository it is **https://jsodm1.github.io/our-little-museum/**.
+**Anything committed to a public GitHub repository is public.** For private couple photos, use Together's private upload flow instead of committing them. Local uploads never automatically commit to GitHub.
 
-If you change the repository name, update the GitHub Actions base in **vite.config.js**. If Pages reports a setup error, check the publishing source and rerun the workflow. To check a missing photo, compare the exact filename, its capitalization and its extension with the configuration.
+## GitHub Pages deployment
 
-## Source map
+The existing repository is configured to publish from **gh-pages**, and the included workflow builds every push to **main**, updates the publishing branch and requests a Pages build. It also supports the **GitHub Actions** source setting for new repositories.
 
-| Location | Purpose |
-| --- | --- |
-| src/main.js | Entrance, visitor guide, collection index, sound controls and viewer |
-| src/config/museumConfig.js | All editable memories, names, styles and final letter |
-| src/scenes/ | Gallery architecture, lighting, textures, camera and compatibility rendering |
-| src/characters/ | Original jointed character meshes and walking, breathing and reaching poses |
-| src/controls/ | Keyboard, touch, pointer input and collision boundaries |
-| src/components/ | Interface icons and Web Audio ambience |
-| src/styles/ | Responsive layouts and reduced-motion styles |
-| public/photos/ | Replaceable JPEGs and missing-image artwork |
+```sh
+git add .
+git commit -m "Personalize our little world"
+git push origin main
+```
 
-Modern WebGL2 browsers use the full Three.js renderer. Touch devices use a capped pixel ratio and lighter shadows. When a browser denies WebGL, a lower-resolution software renderer draws the same 3D geometry and keeps the walk and frame interactions. If graphics initialization fails entirely, the photo index and viewer remain available.
+For your own copy:
 
-The eight sample photographs depict a fictional couple and were generated for this project. The names, dates and captions are editable examples. The meshes, icons, ambience and fallback illustration were created for the museum. Third-party libraries retain their package licenses.
+1. Create a free public GitHub repository named `our-little-museum`.
+2. Push the complete project, including `.github/workflows/deploy.yml` and `package-lock.json`.
+3. In **Settings → Pages → Source**, choose **GitHub Actions**.
+4. In **Actions**, run **Publish museum to GitHub Pages** if the first push ran before Pages was enabled.
+5. Wait for the build/deployment to succeed, then open **Settings → Pages → Visit site**.
+6. Share the website URL. To share a private world, send the invitation generated inside Together as well.
+
+Vite uses `/our-little-museum/` during GitHub Actions builds and relative paths locally. If you rename the repository, update `vite.config.js`. No paid server is needed.
+
+## Your own Supabase project / administration
+
+Forks should use their own backend rather than the defaults belonging to this site.
+
+1. Create a Supabase project on an available **Free** organization slot. Do not enable a paid plan to follow this guide.
+2. Run `supabase/schema.sql` **once in a new empty project** through the SQL editor. It creates private worlds, chat, presence, permissions, rate limits and account recovery storage.
+3. Deploy `supabase/functions/couple-account/index.ts` as the `couple-account` Edge Function with JWT verification disabled. Registration/recovery deliberately accept unauthenticated requests; they enforce input validation and a hashed-IP rate limit. The function uses the platform-provided service role credential **only on the server**.
+4. Set your project URL and **publishable** API key in `src/config/online.js`, or use `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in a local `.env`. These are public client configuration values. Never put a secret/service-role key in frontend code or a Vite variable.
+5. Rebuild and publish. Usernames are mapped internally to synthetic `.invalid` addresses; these are account identifiers, not verified email ownership. Email is not used for authorization or recovery.
+
+The **platform administrator** is the Supabase/GitHub project owner. There is no hard-coded admin password or public admin route. Manage project-level records/accounts through your Supabase dashboard. Individual world owners administer their own partner permissions inside the app.
+
+Free hosting has storage, bandwidth, request and availability limits; free projects may pause when inactive. This is a free-plan deployment, not unlimited free infrastructure. Images are resized before upload; each media upload is limited to 12 MB. Keep backups and monitor Supabase usage. No paid products or subscriptions were enabled. The app deliberately uses membership-protected database heartbeats, so Supabase Realtime need not be enabled.
+
+The recovery/rate-limit tables deny client access by design. Privileged implementations are in a non-exposed schema with explicit authorization checks; public RPC wrappers run as the invoker. Storage and all public tables use RLS. An optional Supabase advisory for leaked-password checking depends on your Auth plan/settings; use a unique, strong password.
+
+## Project structure
+
+| Path | Purpose |
+|---|---|
+| `src/main.js` | UI, editor, viewer, worlds, accounts, invitations and chat |
+| `src/config/` | Sample memories and public backend settings |
+| `src/scenes/` | Museum, eight extra environments, camera and rendering |
+| `src/characters/` | Procedural avatars and local face alignment |
+| `src/controls/` | Keyboard, touch, joystick and collisions |
+| `src/components/` | Icons, original synthesized music, avatar preview |
+| `src/data/` | Local backups, storage, private uploads and session heartbeat |
+| `src/styles/` | Responsive full-screen interface |
+| `public/photos/` | Sample photographs and fallback |
+| `scripts/prepare-assets.mjs` | Pinned local face-model preparation |
+| `supabase/` | Complete database setup and account endpoint |
+| `tests/` | Automated environment and collision checks |
+| `.github/workflows/deploy.yml` | GitHub Pages build and deployment |
+
+See `QA.md` for verification scope and `LICENSES.md` for asset/library attribution.

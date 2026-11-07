@@ -117,10 +117,20 @@ export const museumConfig = {
     },
   ],
 };
-export const memories = [...museumConfig.memories].sort(
+export let memories = [...museumConfig.memories].sort(
   (a, b) => a.order - b.order,
 );
-const photoRoot = import.meta.env.BASE_URL + "photos/";
+const photoRoot = (import.meta.env?.BASE_URL || './') + "photos/";
 export const photoURL = (memory) =>
-  photoRoot + memory.file.split("/").map(encodeURIComponent).join("/");
+  memory.image || memory.url || photoRoot + (memory.file || "missing.svg").split("/").map(encodeURIComponent).join("/");
 export const fallbackURL = photoRoot + "missing.svg";
+
+
+export function applyWorld(world) {
+  museumConfig.couple = world.couple;
+  museumConfig.personalMessage = world.personalMessage;
+  museumConfig.favoriteId = world.favoriteId;
+  museumConfig.finaleId = world.finaleId;
+  museumConfig.memories = world.memories;
+  memories = [...world.memories].sort((a,b) => a.order-b.order);
+}

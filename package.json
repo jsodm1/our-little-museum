@@ -1,17 +1,23 @@
 {
   "name": "our-little-museum",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "predev": "node scripts/prepare-assets.mjs",
+    "prebuild": "node scripts/prepare-assets.mjs",
+    "test": "node --test tests/*.test.mjs"
   },
   "engines": {
     "node": ">=22.12.0"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "0.10.32",
+    "@supabase/supabase-js": "2.95.3",
+    "fflate": "0.8.2",
     "three": "0.180.0"
   },
   "devDependencies": {

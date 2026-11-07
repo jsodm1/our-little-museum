@@ -1,9 +1,10 @@
 import * as T from "three";
-import { buildGallery, loadPictures } from "./gallery.js";
+import { buildGallery, loadPictures, room, benches } from "./gallery.js";
 import { compatibilityRenderer } from "./compatibilityRenderer.js";
 import { createAvatar } from "../characters/avatars.js";
 import { museumConfig, memories } from "../config/museumConfig.js";
 import { bindNavigation, constrain } from "../controls/navigation.js";
+import { buildPlace, placeCatalog } from "./places.js";
 const clamp = T.MathUtils.clamp;
 const v = (x = 0, y = 0, z = 0) => new T.Vector3(x, y, z);
 const smooth = (rate, dt) => 1 - Math.exp(-rate * dt);
@@ -34,9 +35,12 @@ export async function createTour(ui) {
   const reduce = matchMedia("(prefers-reduced-motion:reduce)").matches;
   let renderer;
   try {
-    renderer = new T.WebGLRenderer({
+    const canvas=document.createElement('canvas'),context=canvas.getContext('webgl2');
+    if(!context)throw Error('WebGL unavailable');
+    renderer = new T.WebGLRenderer({canvas,context,
       antialias: !low,
       alpha: false,
+      preserveDrawingBuffer: true,
       powerPreference: low ? "low-power" : "high-performance",
     });
   } catch {
@@ -54,11 +58,16 @@ export async function createTour(ui) {
     renderer.setAnimationLoop(null);
     ui.lost();
   });
-  const pics = await loadPictures((p) => ui.progress(10 + p * 67));
-  const { scene, frames, hits, particles } = buildGallery(renderer, pics, low);
-  const camera = new T.PerspectiveCamera(50, 1, 0.055, 55);
-  const avatars = museumConfig.couple.map(createAvatar),
-    [player, mate] = avatars.map((a) => a.group);
+  let locationId = ui.world().startPlace || 'beach', worldData;
+  async function build(id) {
+    if (id !== 'museum') return buildPlace(id, renderer, {time:ui.world().time,low});
+    const pics = await loadPictures(p=>ui.progress(10+p*67));
+    return {...buildGallery(renderer,pics,low),bounds:room,obstacles:[...benches,{x:4.55,z:-8.05,w:.9,d:.9}],spawn:[.8,3.1],overview:{position:[-4.6,2.3,8.9],target:[.55,1.99,-3.25]},hotspots:[],zones:placeCatalog[0].zones};
+  }
+  worldData = await build(locationId);
+  let {scene,frames=[],hits=[],particles}=worldData;
+  const camera = new T.PerspectiveCamera(50, 1, 0.055, 220);
+  let avatars = museumConfig.couple.map(createAvatar), role = ui.role(), player = avatars[role].group, mate = avatars[1-role].group, remote = null, walkTarget = null;
   const labels = avatars.map((a, i) => {
     scene.add(a.group);
     const label = document.createElement("span");
@@ -102,23 +111,21 @@ export async function createTour(ui) {
     prevWidth = 0,
     transition = 0;
   function entrance() {
-    const aspect = host.clientWidth / Math.max(1, host.clientHeight);
-    if (aspect < 1.2) {
-      desired.set(-3.8, 1.85, 8.4);
-      goal.set(1.48, 1.97, 0.45);
-    } else {
-      desired.set(-4.6, 1.88, 8.9);
-      goal.set(0.55, 1.99, -3.25);
-    }
+    desired.fromArray(worldData.overview.position);
+    goal.fromArray(worldData.overview.target);
+    if(host.clientWidth/host.clientHeight<.8){if(locationId==='museum'){desired.set(-2.8,2.7,8.8);goal.set(.8,1.3,1.8);}else{desired.set(-3.7,3.7,14.8);goal.set(2.4,1.3,4.5);}}
   }
+  function bound(p,r=.28){return constrain(p,r,worldData.bounds,worldData.obstacles);}
   function reset() {
     nav?.reset();
     mode = "welcome";
     prior = "welcome";
     holding = false;
     ui.hands(false);
-    player.position.set(0.8, 0, 3.1);
-    mate.position.set(1.52, 0, 3.15);
+    player.position.set(worldData.spawn[0],0,worldData.spawn[1]);
+    mate.position.copy(player.position).add(v(.83,0,0));
+    bound(player.position); bound(mate.position);
+    walkTarget=null;
     player.rotation.y = 2.63;
     mate.rotation.y = 2.9;
     yaw = -0.23;
@@ -136,7 +143,9 @@ export async function createTour(ui) {
       1 - ((e.clientY - r.top) / r.height) * 2,
     );
     ray.setFromCamera(ndc, camera);
-    return ray.intersectObjects(hits, false)[0]?.object.userData.frame ?? -1;
+    const target=ray.intersectObjects([...hits,...worldData.hotspots.map(h=>h.mesh)],false)[0];
+    if(target) return target.object.userData.frame ?? worldData.hotspots.findIndex(h=>h.mesh===target.object)+1000;
+    return -1;
   }
   const nav = bindNavigation(renderer.domElement, {
     active: () => mode === "walking" && ui.active(),
@@ -147,15 +156,23 @@ export async function createTour(ui) {
     zoom: (n) => (distance = clamp(distance + n, 1.65, 5.9)),
     tap: (e) => {
       const i = pick(e);
-      if (i >= 0) ui.open(i);
+      if (i >= 0) interactWith(i);
+      else {const p=v(); if(ray.ray.intersectPlane(new T.Plane(v(0,1,0),0),p)&&p.distanceTo(player.position)<30)walkTarget=bound(p); }
     },
     hover: (e) => {
       renderer.domElement.style.cursor = pick(e) >= 0 ? "pointer" : "grab";
     },
     interact: () => {
-      if (nearest >= 0) ui.open(nearest);
+      if (nearest >= 0) interactWith(nearest);
     },
   });
+  function interactWith(i) {
+    if(i<1000) ui.open(i);
+    else {const h=worldData.hotspots[i-1000];if(!h)return;
+      if(h.kind==='sit'){player.position.set(h.position[0],0,h.position[2]+.85);bound(player.position);walkTarget=null;burst(player.position);ui.notify('Take a quiet moment together.');}
+      else ui.hotspot(h);
+    }
+  }
   function burst(p) {
     if (reduce) return;
     for (let i = 0; i < 7; i++) {
@@ -188,7 +205,7 @@ export async function createTour(ui) {
     focusIndex = index;
     nav.reset();
     transition = 0.8;
-    if (memories[index].id === museumConfig.finaleId)
+    if (frames[index] && memories[index]?.id === museumConfig.finaleId)
       burst(
         frames[index].center
           .clone()
@@ -203,8 +220,11 @@ export async function createTour(ui) {
       0,
       -input.x * Math.sin(yaw) + input.y * Math.cos(yaw),
     );
-    player.position.addScaledVector(dir, dt * 2.7);
-    constrain(player.position, 0.31);
+    if(dir.lengthSq()>.01)walkTarget=null;
+    else if(walkTarget){dir.copy(walkTarget).sub(player.position);dir.y=0;if(dir.length()<.16){walkTarget=null;dir.set(0,0,0);}else dir.normalize();}
+    const before=player.position.clone();
+    player.position.addScaledVector(dir,dt*2.7); bound(player.position,.31);
+    if(walkTarget&&before.distanceToSquared(player.position)<.000002)walkTarget=null;
     if (dir.lengthSq() > 0.002)
       player.rotation.y = angle(
         player.rotation.y,
@@ -220,16 +240,20 @@ export async function createTour(ui) {
       offset.z -= 0.32 * Math.cos(rot);
     }
     goal.copy(player.position).add(offset);
-    constrain(goal, 0.27);
+    bound(goal,.27);
     delta.copy(goal).sub(mate.position);
     const dist = delta.length();
     const speed = Math.min(3.6, dist * (holding ? 6 : 4));
-    mate.position.addScaledVector(delta, (speed * dt) / (dist || 1));
-    constrain(mate.position, 0.27);
+    if(remote && performance.now()-remote.at<5000){
+      mate.visible=remote.place===locationId;
+      if(mate.visible)mate.position.lerp(v(remote.x,0,remote.z),smooth(12,dt));
+    }else {mate.visible=true;mate.position.addScaledVector(delta,(speed*dt)/(dist||1));bound(mate.position,.27);}
+    if(remote&&performance.now()-remote.at<5000)mate.rotation.y=remote.yaw;
     const turn = !holding && dist > 0.85 ? Math.atan2(delta.x, delta.z) : rot;
-    mate.rotation.y = angle(mate.rotation.y, turn, smooth(8, dt));
-    avatars[0].animate(dt, time, dir.length(), holding, -1);
-    avatars[1].animate(dt, time, speed / 2.7, holding, 1);
+    if(!remote||performance.now()-remote.at>=5000)mate.rotation.y=angle(mate.rotation.y,turn,smooth(8,dt));
+    avatars[role].animate(dt,time,dir.length(),holding,-1);
+    avatars[1-role].animate(dt,time,remote?remote.speed||0:speed/2.7,holding,1);
+    ui.pose({place:locationId,x:player.position.x,z:player.position.z,yaw:player.rotation.y,speed:dir.length()});
     let near = -1,
       min = 3.0;
     frames.forEach((f, i) => {
@@ -242,9 +266,10 @@ export async function createTour(ui) {
         min = d;
       }
     });
+    worldData.hotspots.forEach((h,i)=>{const d=Math.hypot(h.position[0]-player.position.x,h.position[2]-player.position.z);if(d<min){min=d;near=i+1000;}});
     if (near !== nearest) {
       nearest = near;
-      ui.near(near);
+      ui.near(near,near>=1000?worldData.hotspots[near-1000]?.title:memories[near]?.title);
     }
   }
   function cameraTarget() {
@@ -252,7 +277,7 @@ export async function createTour(ui) {
       entrance();
       return;
     }
-    if (mode === "focus") {
+    if (mode === "focus" && frames[focusIndex]) {
       const f = frames[focusIndex];
       goal.copy(f.center);
       desired
@@ -269,8 +294,8 @@ export async function createTour(ui) {
     );
     let fraction = 1;
     for (const [k, b] of [
-      ["x", 5.83],
-      ["z", 9.83],
+      ["x", worldData.bounds.x-.17],
+      ["z", worldData.bounds.z-.17],
     ])
       if (Math.abs(offset[k]) > 0.0001) {
         fraction = Math.min(
@@ -279,7 +304,7 @@ export async function createTour(ui) {
         );
       }
     desired.copy(goal).addScaledVector(offset, Math.max(0.005, fraction));
-    desired.y = clamp(desired.y, 1.18, 4.29);
+    desired.y = clamp(desired.y,1.18,locationId==="museum"?4.29:7.5);
   }
   function resize() {
     const w = host.clientWidth,
@@ -326,7 +351,7 @@ export async function createTour(ui) {
       project.copy(a.group.position);
       project.y += i === 0 ? 1.9 : 1.82;
       project.project(camera);
-      labels[i].hidden =
+      labels[i].hidden = !a.group.visible ||
         mode === "focus" ||
         Math.abs(project.x) > 0.96 ||
         Math.abs(project.y) > 0.96 ||
@@ -339,7 +364,7 @@ export async function createTour(ui) {
         (0.5 - project.y * 0.5) * host.clientHeight +
         "px) translate(-50%,-100%)";
     }
-    if (!reduce) particles.position.y = Math.sin(time * 0.17) * 0.045;
+    if (!reduce && particles) particles.position.y = Math.sin(time * 0.17) * 0.045;
     for (let i = hearts.length - 1; i >= 0; i--) {
       const h = hearts[i],
         age = time - h.born;
@@ -354,12 +379,35 @@ export async function createTour(ui) {
         hearts.splice(i, 1);
       }
     }
+    worldData.update?.(time,dt);
     renderer.render(scene, camera);
   }
   tick(performance.now());
   renderer.setAnimationLoop(tick);
   ui.progress(100);
+  function disposeScene(old){
+    const gs=new Set(),ms=new Set(),ts=new Set();old.traverse(o=>{if(o.geometry)gs.add(o.geometry);if(o.material)for(const m of Array.isArray(o.material)?o.material:[o.material]){ms.add(m);for(const key in m)if(m[key]?.isTexture)ts.add(m[key]);}});gs.forEach(g=>g.dispose());ms.forEach(m=>m.dispose());ts.forEach(t=>t.dispose());
+  }
   return {
+    get place(){return locationId;},
+    get role(){return role;},
+    async travel(id){
+      nav.reset();walkTarget=null;mode='loading';
+      const next=await build(id);avatars.forEach(a=>a.group.removeFromParent());feet.forEach(f=>f.removeFromParent());hearts.forEach(h=>h.mesh.removeFromParent());hearts.length=0;disposeScene(scene);
+      worldData=next;scene=next.scene;frames=next.frames||[];hits=next.hits||[];particles=next.particles;locationId=id;
+      avatars.forEach(a=>scene.add(a.group));feet.forEach(f=>scene.add(f));reset();mode='walking';prior='walking';ui.place(id);
+    },
+    refreshAvatars(){
+      const positions=avatars.map(a=>({p:a.group.position.clone(),r:a.group.rotation.y}));
+      avatars.forEach(a=>{a.group.removeFromParent();disposeScene(a.group);});
+      avatars=museumConfig.couple.map(createAvatar);role=ui.role();player=avatars[role].group;mate=avatars[1-role].group;
+      avatars.forEach((a,i)=>{a.group.position.copy(positions[i].p);a.group.rotation.y=positions[i].r;scene.add(a.group);labels[i].textContent=museumConfig.couple[i].name;});
+    },
+    remote(p){if(p&&[p.x,p.z,p.yaw].every(Number.isFinite)&&Math.abs(p.x)<100&&Math.abs(p.z)<100)remote={...p,at:performance.now()};else remote=null;},
+    zone(position){player.position.set(position[0],0,position[1]);bound(player.position);mate.position.copy(player.position).add(v(.85,0,0));bound(mate.position);nav.reset();walkTarget=null;mode='walking';},
+    recenter(){yaw=0;pitch=.29;distance=3.9;},
+    snapshot(){renderer.render(scene,camera);return renderer.domElement.toDataURL('image/png');},
+    reaction(){burst(player.position.clone().lerp(mate.position,.5));},
     start() {
       mode = "walking";
       prior = "walking";
@@ -383,7 +431,7 @@ export async function createTour(ui) {
       if (holding) burst(player.position.clone().lerp(mate.position, 0.5));
     },
     interact() {
-      if (nearest >= 0) ui.open(nearest);
+      if (nearest >= 0) interactWith(nearest);
     },
   };
 }

@@ -266,7 +266,8 @@ export function compatibilityRenderer() {
       fx = (camera.projectionMatrix.elements[0] * w) / 2;
       fy = (camera.projectionMatrix.elements[5] * h) / 2;
       const buffer = new Uint32Array(output.data.buffer);
-      buffer.fill(0xffcdd4d8);
+      const bg=scene.background?.isColor?scene.background.getHex():0xd8d4cd;
+      buffer.fill((0xff000000 | ((bg & 255)<<16) | (bg & 65280) | (bg>>>16))>>>0);
       depth.fill(0);
       const transparent = [];
       scene.traverseVisible((mesh) => {
