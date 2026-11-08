@@ -10,3 +10,5 @@
 - Face Landmarker model (float16, version 1) from Google's MediaPipe model distribution, downloaded by `scripts/prepare-assets.mjs`; model documentation: https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker
 
 Dependency notices remain in installed packages and production bundles. The face model and WASM runtime are copied/downloaded at build time and served locally at runtime. Only upload faces with permission, and use music/photos you own or are licensed to share. No paid API or third-party identity service is used.
+
+QR codes: qrcode 1.5.4 (MIT), generated locally without sending private invitation URLs to a QR service. Reference outfit images supplied by the user guided original procedural geometry; they are not redistributed as character models.

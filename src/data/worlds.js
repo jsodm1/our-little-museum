@@ -1,7 +1,8 @@
+import {normalizeWorld} from '../config/personalization.js';
 import { museumConfig } from '../config/museumConfig.js';
 import { strToU8, strFromU8, zipSync, unzipSync } from 'fflate';
 const template = structuredClone(museumConfig);
-export const defaultWorld = () => ({
+export const defaultWorld = () => normalizeWorld({
   version: 2, id: crypto.randomUUID(), title: 'Our Little World',
   couple: structuredClone(template.couple).map((c,i)=>({...c,faceWidth:1,faceHeight:1,eyeSize:1,glasses:false})),
   memories: structuredClone(template.memories), favoriteId:'first-picture',finaleId:'forever',
@@ -44,6 +45,14 @@ export function validateWorld(w){
   }
   w.bucketList=Array.isArray(w.bucketList)?w.bucketList.slice(0,30):[];
   w.volume=Math.max(0,Math.min(1,Number(w.volume)||0));
+  normalizeWorld(w);
+  for(const key of ['brand','eyebrow','heading','subheading','description','enter','edit','loading','loadMessage'])if(typeof w.screen[key]!=='string'||w.screen[key].length>600)throw Error('Homepage text is too long or invalid.');
+  for(const key of ['accent','paper','highlight'])if(!/^#[0-9a-f]{6}$/i.test(w.screen[key]))throw Error('Choose valid theme colors.');
+  if(w.screen.logo&&!/^data:image\/(jpeg|png|webp);base64,/.test(w.screen.logo))throw Error('Upload a supported logo image.');
+  if(w.decorations.length>60||w.playlist.length>5)throw Error('Keep up to 60 decorations and 5 soundtrack tracks.');
+  for(const d of w.decorations){if(!['bench','table','planter','lantern','sign','arch','rug','gift','snowman','tree'].includes(d.type)||![d.x,d.z,d.rotation,d.scale].every(Number.isFinite)||Math.abs(d.x)>12||Math.abs(d.z)>12||d.scale<.5||d.scale>2)throw Error('A decoration has invalid placement.');}
+  for(const [place,s] of Object.entries(w.places)){if(s.sky&&!/^#[0-9a-f]{6}$/i.test(s.sky))throw Error('Choose a valid sky color.');if(s.light&&!/^#[0-9a-f]{6}$/i.test(s.light))throw Error('Choose a valid light color.');}
+  if(w.places[w.startPlace]?.disabled)throw Error('Your starting place must stay enabled.');
   return w;
 }
 export function download(data,name,type){
@@ -54,6 +63,7 @@ export async function exportWorld(w){
   for(const m of copy.memories){if(m.image?.startsWith('blob:')||m.assetPath){const r=await fetch(m.image);if(!r.ok)throw Error('A photograph could not be included. Try again.');m.image=await blobData(await r.blob());delete m.assetPath;}}
   for(const c of copy.couple){if(c.faceAsset){const r=await fetch(c.faceTexture);if(!r.ok)throw Error('The face image could not be included.');c.faceTexture=await blobData(await r.blob());delete c.faceAsset;}}
   if(copy.soundtrack?.assetPath){const r=await fetch(copy.soundtrack.data);if(!r.ok)throw Error('The soundtrack could not be included.');copy.soundtrack.data=await blobData(await r.blob());delete copy.soundtrack.assetPath;}
+  for(const t of copy.playlist||[])if(t.assetPath){const r=await fetch(t.data);if(!r.ok)throw Error('A playlist track could not be included.');t.data=await blobData(await r.blob());delete t.assetPath;}
   delete copy.cloudId;delete copy.revision;
   const data=zipSync({'world.json':strToU8(JSON.stringify(copy))},{level:3});
   download(data,(w.title||'our-world').replace(/[^a-z0-9-]/gi,'-')+'.couple.zip','application/zip');

@@ -30,7 +30,7 @@ The published site is already connected to the owner's **free Supabase project**
 
 An invitation expires after two days and works once. The first different signed-in account to accept becomes the partner. Each world has at most two member accounts; each owner can create three shared worlds. A different couple can create their own separate world.
 
-The owner controls shared editing. A partner can always edit their own avatar. The owner can enable **Allow partner to edit photos, story and settings**. The database enforces these rules, not just the buttons. Stale edits are rejected rather than overwriting newer saves: reload the saved version and reapply your changes.
+Only the owner edits shared content and both avatars. The partner independently controls their own character and can send messages. The database enforces these rules, not just the buttons. Stale edits are rejected rather than overwriting newer saves: reload the saved version and reapply your changes.
 
 Use **Reload saved version** after the other person publishes changes. Travel and photo invitations appear in Together; they do not force the other person's camera to move. Motion uses a private database heartbeat roughly once per second with interpolated rendering. Slow connections update less often. When your partner is away, their character becomes an animated companion.
 
@@ -180,3 +180,24 @@ The recovery/rate-limit tables deny client access by design. Privileged implemen
 | `.github/workflows/deploy.yml` | GitHub Pages build and deployment |
 
 See `QA.md` for verification scope and `LICENSES.md` for asset/library attribution.
+
+## Owner studio update — Jayson & Joana
+
+The default characters are now Jayson and Joana. **Only the world owner edits either character or the shared world.** Partner editing is disabled at the database level. Both accounts retain independent movement, messages, personal controls and activity participation.
+
+1. Open **Manage → Main screen** to edit headings, descriptions, button labels, logo, typography and colors.
+2. Choose **Characters** for names, face uploads, garment types, wardrobe presets and location outfits.
+3. Use **Save draft** to save privately. Drafts autosave on this device; Save draft additionally stores a cloud draft when connected.
+4. Use **Preview**, then **Return to editor**. Choose **Publish changes** to update the shared world. Local worlds use **Publish locally**.
+5. In **Together**, create/open a private world, then select **Create partner link**. Copy/share the link, download the QR, or download a designed invitation card. It expires after two days and admits one partner account once. Never post private invitations publicly.
+6. Joana opens the invitation with a separate account and accepts it. Both players open the same world. The **World link & QR** is a return link for existing members; it does not grant access.
+7. **Messages** includes saved text, letter mode, reactions, photo attachments and voice recording (browser permission required). **Moments** includes interaction invitations, photo timer, notes, bucket-list completion, activities and location/memory QR links.
+8. **Manage → Surprises** stores scheduled letters separately. Draft and future letters are withheld from the partner by database policies.
+9. **Decorations** offers a draggable top-down placement editor for supported added props. Built-in scenery is not an arbitrary mesh editor. **Places & atmosphere** controls titles, lighting, weather, spawn, camera and local soundtrack.
+10. **Backups & history** exports ZIPs and restores earlier publications as drafts. Keep private backups safe. Uploaded media is stored in private Supabase storage, not committed to GitHub.
+
+For a new backend, apply `supabase/schema.sql`, then `supabase/owner-expansion.sql`, then `supabase/realtime-membership.sql`, in that order. The existing connected project has these upgrades applied. The last file rotates the private realtime channel when a partner is removed.
+
+### Honest scope
+
+The avatars are original procedural stylized models inspired by the reference wardrobe; they are not exact reproductions of the reference renders. Clothing presets share tailored base shapes, and selfie uploads provide an approximate stylized likeness. Locations are nine separate scenes, not a seamless streamed continent. Simple paired poses and activities are implemented; advanced cinematic animation, live video calling, arbitrary imported building editing and unlimited free hosting are not included. Mobile layouts are provided, but physical iPhone/Android and two-human-phone testing are still required. Voice recording/playback depends on the browser's supported audio format. No service worker/offline cache is installed.

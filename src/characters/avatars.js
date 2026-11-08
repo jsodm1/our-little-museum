@@ -368,7 +368,7 @@ function sculptHead(pivot, palette, soft, hairstyle, config) {
   h.finish();
   f.finish();
   if (config.glasses) addGlasses(pivot);
-  if (typeof config.faceTexture === "string" && /^(data:image\/|blob:)/.test(config.faceTexture)) {
+  if (typeof config.faceTexture === "string" && /^(data:image\/|blob:|https:\/\/)/.test(config.faceTexture)) {
     addFaceTexture(pivot, features, config.faceTexture, soft, eyeSize);
   }
 }
@@ -399,7 +399,7 @@ function sculptTorso(torso, p, soft) {
     ]),
     p.skin,
   );
-  if (soft) {
+  if (soft && !p.dress) {
     t.add(
       profile([
         [0.39, 0.07, 0.06],
@@ -426,7 +426,7 @@ function sculptTorso(torso, p, soft) {
       0.0028,
       mix(p.pants, "#755f4f", 0.26),
     );
-  } else {
+  } else if (!soft && p.garment === "shirt") {
     // An open camp-collar overshirt frames a light cotton T-shirt.
     const white = "#f5f0e4";
     t.add(
@@ -483,6 +483,7 @@ function sculptTorso(torso, p, soft) {
 }
 
 function sculptLeg(parent, s, p, soft) {
+  if(p.dress||p.garment==='shorts')p={...p,pants:p.skin};
   const x = s * (soft ? 0.085 : 0.091);
   const hip = joint(parent, x, 0.845);
   const knee = joint(hip, 0, -0.393);
@@ -564,6 +565,7 @@ function sculptLeg(parent, s, p, soft) {
 }
 
 function sculptArm(parent, s, p, soft) {
+ const bare=p.dress||p.garment==='sleeveless';const short=bare||p.garment==='tee'||p.garment==='shorts';
   const shoulder = joint(parent, s * (soft ? 0.158 : 0.182), 0.335);
   const elbow = joint(shoulder, 0, -0.251);
   const a = artist(shoulder),
@@ -577,7 +579,7 @@ function sculptArm(parent, s, p, soft) {
       [0.035, 0.043, 0.045],
       [0.048, 0.021, 0.029],
     ]),
-    p.top,
+    bare?p.skin:p.top,
   );
   b.add(
     profile([
@@ -587,7 +589,7 @@ function sculptArm(parent, s, p, soft) {
       [-0.073, soft ? 0.047 : 0.051, 0.052],
       [0.009, 0.043, 0.047],
     ]),
-    p.top,
+    short?p.skin:p.top,
   );
   b.add(
     profile([
@@ -595,7 +597,7 @@ function sculptArm(parent, s, p, soft) {
       [-0.21, 0.037, 0.039],
       [-0.199, 0.036, 0.038],
     ]),
-    mix(p.top, "#262329", 0.25),
+    short?p.skin:mix(p.top, "#262329", 0.25),
   );
   b.add(
     profile([
@@ -626,6 +628,7 @@ export function createAvatar(config = {}) {
     pants: config.pants || (soft ? "#e6dacc" : "#393b41"),
     shoes: config.shoes || (soft ? "#b59778" : "#444044"),
   };
+  p.garment=config.garment||"shirt";p.dress=["dress","maxi","knit"].includes(p.garment);
   const group = new THREE.Group();
   group.name = config.name || "Visitor";
   const body = joint(group, 0, 0);
@@ -648,10 +651,17 @@ export function createAvatar(config = {}) {
     ]),
     p.pants,
   );
-  hips.finish();
+  hips.finish().visible=!p.dress;
+  if(p.dress){const skirt=artist(body);const hem=p.garment==="maxi"?.17:p.garment==="knit"?.38:.4;skirt.add(profile([[hem,.24,.17],[hem+.035,.245,.17],[.68,.205,.14],[.87,.155,.117],[.96,.145,.11]]),p.top);skirt.finish();}
   const legs = [-1, 1].map((s) => sculptLeg(body, s, p, soft));
   const arms = [-1, 1].map((s) => sculptArm(torso, s, p, soft));
-  group.scale.setScalar(soft ? 0.984 : 1.03);
+  group.scale.setScalar((soft ? 0.984 : 1.03)*THREE.MathUtils.clamp(Number(config.height)||1,.88,1.12));
+  const accessory=artist(torso);
+  if(config.bag){accessory.add(new THREE.BoxGeometry(.13,.18,.08),'#53463b',[.19,-.04,.04]);accessory.seam([[-.13,.37,.105],[.04,.19,.13],[.19,-.01,.09]],.013,'#53463b');}
+  if(config.watch)accessory.add(new THREE.TorusGeometry(.04,.009,6,12),'#74766e',[-.24,-.10,0],[Math.PI/2,0,0]);
+  if(config.bag||config.watch)accessory.finish();
+  if(config.cap){const hat=artist(head);hat.add(new THREE.SphereGeometry(.13,16,8,0,Math.PI*2,0,Math.PI/2),'#d1c09e',[0,.25,0]);hat.oval([0,.254,.10],[.14,.013,.12],'#d1c09e');hat.finish();}
+  if(config.sunglasses){addGlasses(head);const lens=artist(head);for(const side of [-1,1])lens.oval([side*.042,.17,.125],[.032,.023,.005],'#292c2e');lens.finish();}
   let phase = soft ? 1.4 : 0,
     stride = 0,
     affection = 0;
@@ -686,6 +696,11 @@ export function createAvatar(config = {}) {
         -0.095 - (0.07 + s * step * 0.06) * stride - 0.11 * reach;
       elbow.rotation.z = s * 0.09 * reach;
     }
+    const action=group.userData.action||'idle';
+    if(action==='sit'){body.position.y=-.39;legs.forEach(({hip,knee,foot})=>{hip.rotation.x=-1.5;knee.rotation.x=1.5;foot.rotation.x=0;});arms.forEach(({shoulder,elbow})=>{shoulder.rotation.x=-.55;elbow.rotation.x=-.4;});}
+    if(action==='hug'){arms.forEach(({shoulder,elbow,s})=>{shoulder.rotation.x=-1.25;shoulder.rotation.z=s*.35;elbow.rotation.x=-.6;});head.rotation.z=side*.12;}
+    if(action==='dance'){torso.rotation.z=Math.sin(time*2)*.08;torso.rotation.y=Math.sin(time)*.12;body.position.y=.025*Math.sin(time*4);arms.forEach(({shoulder,elbow,s})=>{shoulder.rotation.z=s*(.55+.15*Math.sin(time*2));elbow.rotation.x=-.8;});}
+    if(action==='pose'){arms[0].shoulder.rotation.z=-1.4;arms[0].elbow.rotation.x=-.8;head.rotation.z=.08;}
   }
   animate(0, 0);
   return { group, animate };

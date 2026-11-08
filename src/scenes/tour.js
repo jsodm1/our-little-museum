@@ -5,6 +5,8 @@ import { createAvatar } from "../characters/avatars.js";
 import { museumConfig, memories } from "../config/museumConfig.js";
 import { bindNavigation, constrain } from "../controls/navigation.js";
 import { buildPlace, placeCatalog } from "./places.js";
+import {customizeScene,decoration} from './decorations.js';
+import {setOutfit} from '../config/personalization.js';
 const clamp = T.MathUtils.clamp;
 const v = (x = 0, y = 0, z = 0) => new T.Vector3(x, y, z);
 const smooth = (rate, dt) => 1 - Math.exp(-rate * dt);
@@ -60,19 +62,20 @@ export async function createTour(ui) {
   });
   let locationId = ui.world().startPlace || 'beach', worldData;
   async function build(id) {
-    if (id !== 'museum') return buildPlace(id, renderer, {time:ui.world().time,low});
+    if (id !== 'museum') return customizeScene(buildPlace(id, renderer, {time:ui.world().places?.[id]?.time||ui.world().time,low}),id,ui.world());
     const pics = await loadPictures(p=>ui.progress(10+p*67));
-    return {...buildGallery(renderer,pics,low),bounds:room,obstacles:[...benches,{x:4.55,z:-8.05,w:.9,d:.9}],spawn:[.8,3.1],overview:{position:[-4.6,2.3,8.9],target:[.55,1.99,-3.25]},hotspots:[],zones:placeCatalog[0].zones};
+    return customizeScene({...buildGallery(renderer,pics,low),bounds:room,obstacles:[...benches,{x:4.55,z:-8.05,w:.9,d:.9}],spawn:[.8,3.1],overview:{position:[-4.6,2.3,8.9],target:[.55,1.99,-3.25]},hotspots:[],zones:placeCatalog[0].zones},id,ui.world());
   }
   worldData = await build(locationId);
   let {scene,frames=[],hits=[],particles}=worldData;
   const camera = new T.PerspectiveCamera(50, 1, 0.055, 220);
-  let avatars = museumConfig.couple.map(createAvatar), role = ui.role(), player = avatars[role].group, mate = avatars[1-role].group, remote = null, walkTarget = null;
+  const createPerson=c=>{const config=structuredClone(c);if(config.locationOutfits?.[locationId])setOutfit(config,config.locationOutfits[locationId]);return createAvatar(config);};
+  let avatars = museumConfig.couple.map(createPerson), role = ui.role(), player = avatars[role].group, mate = avatars[1-role].group, remote = null, walkTarget = null;
   const labels = avatars.map((a, i) => {
     scene.add(a.group);
     const label = document.createElement("span");
     label.className = "name-tag";
-    label.textContent = museumConfig.couple[i].name;
+    label.textContent = museumConfig.couple[i].name+(i===role?' · You':'');
     document.querySelector("#labels").append(label);
     return label;
   });
@@ -150,8 +153,8 @@ export async function createTour(ui) {
   const nav = bindNavigation(renderer.domElement, {
     active: () => mode === "walking" && ui.active(),
     rotate: (x, y) => {
-      yaw -= x;
-      pitch = clamp(pitch + y, 0.06, 0.82);
+      yaw -= x*(ui.settings?.().sensitivity||1);
+      pitch = clamp(pitch + y*(ui.settings?.().sensitivity||1), 0.06, 0.82);
     },
     zoom: (n) => (distance = clamp(distance + n, 1.65, 5.9)),
     tap: (e) => {
@@ -169,8 +172,8 @@ export async function createTour(ui) {
   function interactWith(i) {
     if(i<1000) ui.open(i);
     else {const h=worldData.hotspots[i-1000];if(!h)return;
-      if(h.kind==='sit'){player.position.set(h.position[0],0,h.position[2]+.85);bound(player.position);walkTarget=null;burst(player.position);ui.notify('Take a quiet moment together.');}
-      else ui.hotspot(h);
+      if(h.kind==='sit'){player.position.set(h.position[0],0,h.position[2]+.85);bound(player.position);walkTarget=null;player.userData.action='sit';burst(player.position);ui.notify('A quiet moment. Move to stand up.');}
+      else if(h.kind==='decoration')ui.notify(h.text||'A little something for you.');else if(h.kind==='hunt'){h.mesh.visible=false;h.found=true;const left=worldData.hotspots.filter(x=>x.kind==='hunt'&&!x.found).length;ui.notify(left?left+' keepsakes left to find.':'You found all three keepsakes!');if(!left)huntDone?.();}else ui.hotspot(h);
     }
   }
   function burst(p) {
@@ -220,7 +223,7 @@ export async function createTour(ui) {
       0,
       -input.x * Math.sin(yaw) + input.y * Math.cos(yaw),
     );
-    if(dir.lengthSq()>.01)walkTarget=null;
+    if(dir.lengthSq()>.01){walkTarget=null;player.userData.action='idle';holding=false;}
     else if(walkTarget){dir.copy(walkTarget).sub(player.position);dir.y=0;if(dir.length()<.16){walkTarget=null;dir.set(0,0,0);}else dir.normalize();}
     const before=player.position.clone();
     player.position.addScaledVector(dir,dt*2.7); bound(player.position,.31);
@@ -244,16 +247,16 @@ export async function createTour(ui) {
     delta.copy(goal).sub(mate.position);
     const dist = delta.length();
     const speed = Math.min(3.6, dist * (holding ? 6 : 4));
-    if(remote && performance.now()-remote.at<5000){
+    if(remote && performance.now()-remote.at<18000){
       mate.visible=remote.place===locationId;
       if(mate.visible)mate.position.lerp(v(remote.x,0,remote.z),smooth(12,dt));
-    }else {mate.visible=true;mate.position.addScaledVector(delta,(speed*dt)/(dist||1));bound(mate.position,.27);}
-    if(remote&&performance.now()-remote.at<5000)mate.rotation.y=remote.yaw;
+    }else {mate.visible=ui.settings?.().companion!==false;mate.position.addScaledVector(delta,(speed*dt)/(dist||1));bound(mate.position,.27);}
+    if(remote&&performance.now()-remote.at<18000)mate.rotation.y=remote.yaw;
     const turn = !holding && dist > 0.85 ? Math.atan2(delta.x, delta.z) : rot;
-    if(!remote||performance.now()-remote.at>=5000)mate.rotation.y=angle(mate.rotation.y,turn,smooth(8,dt));
+    if(!remote||performance.now()-remote.at>=18000)mate.rotation.y=angle(mate.rotation.y,turn,smooth(8,dt));
     avatars[role].animate(dt,time,dir.length(),holding,-1);
-    avatars[1-role].animate(dt,time,remote?remote.speed||0:speed/2.7,holding,1);
-    ui.pose({place:locationId,x:player.position.x,z:player.position.z,yaw:player.rotation.y,speed:dir.length()});
+    mate.userData.action=remote?.action||player.userData.action;avatars[1-role].animate(dt,time,remote?remote.speed||0:speed/2.7,holding,1);
+    ui.pose({place:locationId,x:player.position.x,z:player.position.z,yaw:player.rotation.y,speed:dir.length(),action:player.userData.action||'idle'});
     let near = -1,
       min = 3.0;
     frames.forEach((f, i) => {
@@ -326,6 +329,7 @@ export async function createTour(ui) {
   entrance();
   camera.position.copy(desired);
   look.copy(goal);
+  let huntDone=null;
   function tick(now) {
     const dt = Math.min((now - (last || now)) / 1000, 0.1);
     last = now;
@@ -336,6 +340,9 @@ export async function createTour(ui) {
       avatars.forEach((a, i) =>
         a.animate(dt, time, 0, holding, i === 0 ? -1 : 1),
       );
+    if(remote&&performance.now()-remote.at<18000){mate.visible=remote.place===locationId;mate.position.lerp(v(remote.x,0,remote.z),smooth(12,dt));mate.rotation.y=angle(mate.rotation.y,remote.yaw,smooth(12,dt));mate.userData.action=remote.action||'idle';}
+    labels[role].textContent=museumConfig.couple[role].name+' · You';labels[1-role].textContent=museumConfig.couple[1-role].name+(remote?'':' · Companion');
+    feet[1-role].visible=mate.visible;
     cameraTarget();
     transition = Math.max(0, transition - dt);
     const factor = reduce ? 1 : smooth(transition > 0 ? 5 : 9, dt);
@@ -391,6 +398,12 @@ export async function createTour(ui) {
   return {
     get place(){return locationId;},
     get role(){return role;},
+    position(){return {x:player.position.x,z:player.position.z};},
+    quality(value){renderer.setPixelRatio(Math.min(devicePixelRatio||1,value==='low'?1:value==='high'?2:low?1.3:1.65));renderer.shadowMap.enabled=value==='high'||(value==='auto'&&!low);resize();},
+    speech(text){const label=labels[1-role],old=label.textContent;label.textContent=String(text).slice(0,100);ui.notify(museumConfig.couple[1-role].name+': '+String(text).slice(0,100));setTimeout(()=>label.textContent=old,3500);},
+    perform(action,anchor){nav.reset();walkTarget=null;holding=action==='hold hands';player.userData.action=holding?'idle':action;if(anchor){player.position.set(anchor.x+(role===0?-.42:.42),0,anchor.z);bound(player.position);player.rotation.y=action==='hug'?(role===0?Math.PI/2:-Math.PI/2):Math.PI;}if(!ui.connected?.()){mate.userData.action=player.userData.action;mate.position.copy(player.position).add(v(.83,0,0));}burst(player.position);},
+    activityObject(type){const p=bound(player.position.clone().add(v(1.7,0,-1)));scene.add(decoration({type,x:p.x,z:p.z,color:'#d7c6aa',scale:1}));},
+    hunt(done){huntDone=done;worldData.hotspots=worldData.hotspots.filter(h=>{if(h.kind==='hunt'){h.mesh.removeFromParent();return false;}return true;});for(let i=0;i<3;i++){const p=bound(v((i-1)*6,0,2-i*3));const object=new T.Mesh(new T.IcosahedronGeometry(.23,1),new T.MeshStandardMaterial({color:'#e3b7a0',emissive:'#543729'}));object.position.set(p.x,.5,p.z);scene.add(object);worldData.hotspots.push({id:'hunt'+i,kind:'hunt',title:'Collect keepsake',mesh:object,position:[p.x,0,p.z]});}ui.notify('Find three glowing keepsakes along the path. Tap them or press E nearby.');},
     async travel(id){
       nav.reset();walkTarget=null;mode='loading';
       const next=await build(id);avatars.forEach(a=>a.group.removeFromParent());feet.forEach(f=>f.removeFromParent());hearts.forEach(h=>h.mesh.removeFromParent());hearts.length=0;disposeScene(scene);
@@ -400,11 +413,11 @@ export async function createTour(ui) {
     refreshAvatars(){
       const positions=avatars.map(a=>({p:a.group.position.clone(),r:a.group.rotation.y}));
       avatars.forEach(a=>{a.group.removeFromParent();disposeScene(a.group);});
-      avatars=museumConfig.couple.map(createAvatar);role=ui.role();player=avatars[role].group;mate=avatars[1-role].group;
+      avatars=museumConfig.couple.map(createPerson);role=ui.role();player=avatars[role].group;mate=avatars[1-role].group;
       avatars.forEach((a,i)=>{a.group.position.copy(positions[i].p);a.group.rotation.y=positions[i].r;scene.add(a.group);labels[i].textContent=museumConfig.couple[i].name;});
     },
     remote(p){if(p&&[p.x,p.z,p.yaw].every(Number.isFinite)&&Math.abs(p.x)<100&&Math.abs(p.z)<100)remote={...p,at:performance.now()};else remote=null;},
-    zone(position){player.position.set(position[0],0,position[1]);bound(player.position);mate.position.copy(player.position).add(v(.85,0,0));bound(mate.position);nav.reset();walkTarget=null;mode='walking';},
+    zone(position){player.position.set(position[0],0,position[1]);bound(player.position);if(!remote){mate.position.copy(player.position).add(v(.85,0,0));bound(mate.position);}nav.reset();walkTarget=null;mode='walking';},
     recenter(){yaw=0;pitch=.29;distance=3.9;},
     snapshot(){renderer.render(scene,camera);return renderer.domElement.toDataURL('image/png');},
     reaction(){burst(player.position.clone().lerp(mate.position,.5));},

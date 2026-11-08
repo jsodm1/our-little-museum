@@ -14,6 +14,7 @@ export async function hydrate(row){
   await Promise.all(w.memories.map(async m=>{if(m.assetPath)m.image=await assetURL(m.assetPath);}));
   await Promise.all(w.couple.map(async c=>{if(c.faceAsset)c.faceTexture=await assetURL(c.faceAsset);}));
   if(w.soundtrack?.assetPath)w.soundtrack.data=await assetURL(w.soundtrack.assetPath);
+  await Promise.all((w.playlist||[]).map(async t=>{if(t.assetPath)t.data=await assetURL(t.assetPath);}));
   return w;
 }
 export const getCloudWorld=async id=>check(await cloud.from('couple_worlds').select('*').eq('id',id).single());
@@ -29,6 +30,7 @@ function stripped(world){
   w.memories.forEach(m=>{if(m.assetPath)delete m.image;});
   w.couple.forEach(c=>{if(c.faceAsset)delete c.faceTexture;});
   if(w.soundtrack?.assetPath)delete w.soundtrack.data;
+  for(const t of w.playlist||[])if(t.assetPath)delete t.data;
   return w;
 }
 export async function publish(world,userId){
@@ -44,6 +46,7 @@ export async function publish(world,userId){
     for(const m of world.memories)if(m.image?.startsWith('data:')){m.assetPath=await upload(id,userId,m.image,'media');uploaded.push(m.assetPath);}
     for(const c of world.couple)if(c.faceTexture?.startsWith('data:')){c.faceAsset=await upload(id,userId,c.faceTexture,'avatar');uploaded.push(c.faceAsset);}
     if(world.soundtrack?.data?.startsWith('data:')){world.soundtrack.assetPath=await upload(id,userId,world.soundtrack.data,'media');uploaded.push(world.soundtrack.assetPath);}
+    for(const t of world.playlist||[])if(t.data?.startsWith('data:')){t.assetPath=await upload(id,userId,t.data,'media');uploaded.push(t.assetPath);}
     const row=check(await cloud.rpc('publish_couple_world',{world_id:id,expected_revision:revision,next_state:stripped(world)}));
     world.revision=row.revision;return row;
   }catch(e){if(uploaded.length)await cloud.storage.from('couple-media').remove(uploaded);throw e;}
@@ -71,3 +74,29 @@ export async function account(action,username,password,recovery){
  if(data.error)throw Error(data.error);return data;
 }
 export const usernameEmail=name=>name.toLowerCase().trim()+'@accounts.ourlittleworld.invalid';
+
+export async function prepareAssets(world,userId){
+ if(!world.cloudId)throw Error('Create a private world in Together first.');
+ const w=structuredClone(world),id=w.cloudId;
+ for(const m of w.memories)if(m.image?.startsWith('data:')){m.assetPath=await upload(id,userId,m.image,'media');delete m.image;}
+ for(const c of w.couple)if(c.faceTexture?.startsWith('data:')){c.faceAsset=await upload(id,userId,c.faceTexture,'avatar');delete c.faceTexture;}
+ if(w.soundtrack?.data?.startsWith('data:')){w.soundtrack.assetPath=await upload(id,userId,w.soundtrack.data,'media');delete w.soundtrack.data;}
+ for(const track of w.playlist||[])if(track.data?.startsWith('data:')){track.assetPath=await upload(id,userId,track.data,'media');delete track.data;}
+ return stripped(w);
+}
+export const draftRead=async id=>check(await cloud.from('couple_drafts').select('*').eq('world_id',id).maybeSingle());
+export async function draftSave(w,user){const state=await prepareAssets(w,user);check(await cloud.from('couple_drafts').upsert({world_id:w.cloudId,state,updated_at:new Date().toISOString()}));return state;}
+export const versions=async id=>check(await cloud.from('couple_versions').select('*').eq('world_id',id).order('created_at',{ascending:false}).limit(10));
+export const managePartner=async(id,remove=false)=>check(await cloud.rpc('manage_partner',{world_id:id,remove_partner:remove}));
+export const readReceipts=async id=>check(await cloud.from('couple_reads').select('*').eq('world_id',id));
+export const markRead=async(id,user)=>check(await cloud.from('couple_reads').upsert({world_id:id,user_id:user,read_at:new Date().toISOString()}));
+export const reactMessage=async(id,user,emoji)=>check(await cloud.from('couple_reactions').upsert({message_id:id,user_id:user,emoji}));
+export const messageReactions=async ids=>ids.length?check(await cloud.from('couple_reactions').select('*').in('message_id',ids)):[];
+export const mediaURL=assetURL;
+export async function sendAttachment(id,user,file){return upload(id,user,await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file);}), 'chat');}
+export const sendMessage=async(id,user,body,extra={})=>check(await cloud.from('couple_messages').insert({world_id:id,author_id:user,body,...extra}).select().single());
+export const capsules=async id=>check(await cloud.from('couple_capsules').select('*').eq('world_id',id).order('unlock_at'));
+export const saveCapsule=async data=>check(await cloud.from('couple_capsules').upsert(data).select().single());
+export const deleteCapsule=async id=>check(await cloud.from('couple_capsules').delete().eq('id',id));
+export const progress=async id=>check(await cloud.from('couple_progress').select('*').eq('world_id',id));
+export const saveProgress=async(id,user,key,value)=>check(await cloud.from('couple_progress').upsert({world_id:id,user_id:user,key,value,updated_at:new Date().toISOString()}));
