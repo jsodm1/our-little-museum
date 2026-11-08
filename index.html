@@ -4,21 +4,22 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="description" content="A private little world of places, photographs, and moments together.">
 <link rel="apple-touch-icon" href="/our-little-museum/icon-192.png"><link rel="icon" href="/our-little-museum/museum.svg"><link rel="manifest" href="/our-little-museum/manifest.webmanifest">
-<title>Our Little World</title>  <script type="module" crossorigin src="/our-little-museum/assets/index-DA2E-bMM.js"></script>
-  <link rel="stylesheet" crossorigin href="/our-little-museum/assets/index-DdZfLnSh.css">
+<title>Our Little World</title>  <script type="module" crossorigin src="/our-little-museum/assets/index-pAzHB_rA.js"></script>
+  <link rel="stylesheet" crossorigin href="/our-little-museum/assets/index-DvFJEE6d.css">
 </head><body>
 <div id="stage">
   <div id="world"></div><div id="shade"></div><div id="labels"></div>
   <header class="topbar">
-    <button id="home" class="wordmark"><span data-icon="museum"></span>our little world<span class="wordmark-dot">.</span></button>
+    <button id="home" class="wordmark"><span data-icon="museum"></span><img id="brandLogo" hidden alt=""><span id="brandText">our little world.</span></button>
     <div id="locationPill" class="glass"><span class="live-dot"></span><span id="placeName">Sunset Beach</span><span class="divider">/</span><span id="timeName">Golden hour</span></div>
-    <button id="worldButton" class="glass profile"><span class="monogram">J & J</span><span id="coupleNames">Jayson & Jamie</span><i data-icon="down"></i></button>
+    <button id="worldButton" class="glass profile"><span class="monogram">J & J</span><span id="coupleNames">Jayson & Joana</span><i data-icon="down"></i></button>
   </header>
   <div id="welcome">
-    <p class="eyebrow"><span></span>Somewhere only we know</p>
-    <h1>A little world.<br><em>Just for us.</em></h1>
-    <p>Our favorite places. Our favorite memories.<br>And a little more time together.</p>
-    <div class="welcome-actions"><button id="enter" class="primary">Enter our world <i data-icon="arrow"></i></button><button id="makeYours" class="text-button">Make it yours <i data-icon="edit"></i></button></div>
+    <p class="eyebrow"><span></span><b id="heroEyebrow">Somewhere only we know</b></p>
+    <h1><span id="heroHeading">A little world.</span><br><em id="heroSubheading">Just for us.</em></h1>
+    <p id="heroDescription">Our favorite places. Our favorite memories.
+And a little more time together.</p>
+    <div class="welcome-actions"><button id="enter" class="primary"><span id="enterText">Enter our world</span> <i data-icon="arrow"></i></button><button id="makeYours" class="text-button"><span id="editText">Manage our world</span> <i data-icon="edit"></i></button></div>
   </div>
   <div id="sceneCaption"><span id="placeKicker">THE COAST</span><span id="zoneName">A sunset worth staying for</span></div>
   <div id="walkControls" hidden>
@@ -30,12 +31,14 @@
     <button data-panel="places"><i data-icon="map"></i><span>Places</span></button>
     <button data-panel="memories"><i data-icon="image"></i><span>Memories</span></button>
     <button data-panel="editor"><i data-icon="sliders"></i><span>Customize</span></button>
-    <span class="dock-rule"></span>
+    <button data-panel="messages"><i data-icon="send"></i><span>Messages</span><b id="unreadBadge" hidden></b></button>
+<button data-panel="activities"><i data-icon="heart"></i><span>Moments</span></button>
     <button data-panel="together"><i data-icon="people"></i><span>Together</span><b id="onlineDot"></b></button>
     <button data-panel="music"><i data-icon="music"></i><span>Sound</span></button>
     <button id="fullscreen" aria-label="Enter fullscreen"><i data-icon="expand"></i><span>Fullscreen</span></button>
     <button data-panel="guide" aria-label="Controls and settings"><i data-icon="help"></i><span>Guide</span></button>
   </nav>
+  <button id="roomStatus" class="glass" data-panel="together">Local world · connect together</button><button id="returnEditor" class="primary" hidden>Return to editor</button><button id="restoreUI" class="glass" hidden>Show controls</button>
   <div id="toast" role="status" hidden></div>
   <div id="loading"><i data-icon="museum"></i><h2>A place for the two of you.</h2><p id="loadMessage">Opening your little world</p><progress max="100" value="5"></progress></div>
 </div>
